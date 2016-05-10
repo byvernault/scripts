@@ -1,15 +1,4 @@
-"""
-    Separate DICOM files in a folder by reading the header.
-"""
-
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-__author__ = 'byvernault'
-__email__ = 'b.yvernault@ucl.ac.uk'
-__purpose__ = "Separate DICOM files in a folder by reading the header."
-__version__ = '1.0.0'
-__modifications__ = '7 October 2015 - Original write'
+"""Separate DICOM files in a folder by reading the header."""
 
 import os
 import dicom
@@ -17,12 +6,22 @@ import glob
 import subprocess as sb
 from datetime import datetime
 
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "Separate DICOM files in a folder by reading the header."
+__version__ = '1.0.0'
+__modifications__ = '7 October 2015 - Original write'
+
+
 PCOMMENT_TEMPLATE = """Project:{project};Subject:{subject};Session:{session}"""
 
-DICOM_FIELDS = {"commentsXnat":[0x0010,0x4000], "subject":[0x0010,0x0010], "serie":[0x0020,0x0010]}
+DICOM_FIELDS = {"commentsXnat": [0x0010, 0x4000],
+                "subject": [0x0010, 0x0010],
+                "serie": [0x0020, 0x0010]}
+
 
 def parse_args():
-    """ Parser for arguments """
+    """Parser for arguments"""
     from argparse import ArgumentParser
     usage = "Separate DICOM files in a folder by reading the header."
     argp = ArgumentParser(prog='organise_dicomfolder', description=usage)
@@ -33,13 +32,11 @@ def parse_args():
     return argp.parse_args()
 
 def get_info_file(directory, project):
-    """
-        Get the info from directory structure (subject / session)
+    """Get the info from directory structure (subject / session)
 
         :param directory: path for subject dir
         :param project: xnat project ID
-        :return dict: dict with info {"scansdir": list of dir, "comment": patient comment}
-    """
+        :return dict: dict with info {"scansdir": list of dir, "comment": patient comment}"""
     dicom_dict = dict()
     if len(glob.glob(os.path.join(directory,'*','*')))>0 and is_dicom(glob.glob(os.path.join(directory,'*','*'))[0]):
         dcmfpath = glob.glob(os.path.join(directory,'*','*'))[0]

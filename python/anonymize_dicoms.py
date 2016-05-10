@@ -46,6 +46,7 @@ REPORT_HEADER = ['old_id', 'new_id', 'InstitutionAddress', 'PatientAge', 'Milita
                  'Requested Procedure ID', 'Performed Procedure Step Description']
 REMOVE_BY_DEFAULT_NAME = ('InstitutionAddress',
                           'PatientAge',
+                          'PatientAddress',
                           'MilitaryRank',
                           'Allergies',
                           'AdditionalPatientHistory',
@@ -71,11 +72,11 @@ REMOVE_BY_DEFAULT_NAME = ('InstitutionAddress',
                           'PrivateCreatorDataElement',
                           'RequestedProcedureDescription',
                           'CurrentPatientLocation',
-                          #ASK ED/SHONIT
                           'ScanningSequence',
                           'SequenceVariant',
                           'ScanOptions')
-REMOVE_BY_DEFAULT_TAG = [0x00081040, #Institutional Department Name
+REMOVE_BY_DEFAULT_TAG = [0x00081048, #Physician(s) Of Record
+                         0x00081040, #Institutional Department Name
                          0x00081060, #Name of Physician(s) Reading Study
                          0x0032000A, #Study Status ID
                          0x0032000C, #Study Priority ID
@@ -85,9 +86,7 @@ REMOVE_BY_DEFAULT_TAG = [0x00081040, #Institutional Department Name
                          0x00401001, #Requested Procedure ID
                          0x00400254] #Performed Procedure Step Description
 
-SUBSTITUTE_BY_DEFAULT = {
-    'PatientName' : 'Anonymous',
-}
+SUBSTITUTE_BY_DEFAULT = {}
 
 DEFAULT_REPORT_NAME = "anonymize_report.csv"
 
@@ -101,7 +100,7 @@ def parse_args():
                       help='Directory where the dicom will be saved. If None, overwrite the original dicom.')
     argp.add_argument('-x', '--xnat', dest='set_xnat', action="store_true",
                       help='Setting PatientsComment in DICOM header for XNAT using project/patient_id/patient_id_date')
-    argp.add_argument('-a', '--addStudyDate', dest='add_date', action="store_false",
+    argp.add_argument('-a', '--addStudyDate', dest='add_date', action="store_true",
                       help='Add the StudyDate at the end of the session id')
     argp.add_argument('-r', '--removeFields', dest='remove_fields',
                       help='Remove fields specified by this option: E.G: PatientName,PatientID', default=None)
@@ -182,8 +181,10 @@ def anonymize_file(in_path, out_path, patient_dict, keep=(), remove=(), keep_pri
     else:
         patient = f.__getattr__('PatientName')
     if patient != patient_dict['patient_id']:
+        print "Warning: ID didn't match for %s instead of %s" % (patient_dict['patient_id'], patient)
         return
 
+    print "    - Editing %s" % in_path
     #Directory
     if OPTIONS.out_dir:
         o_dir = os.path.join(os.path.dirname(out_path), patient_dict['subject_xnat'])
@@ -210,10 +211,19 @@ def anonymize_file(in_path, out_path, patient_dict, keep=(), remove=(), keep_pri
 
     comment = None
     if OPTIONS.set_xnat:
-        if OPTIONS.add_date or len(patient_dict["session_xnat"]) == 0:
-            session = patient_dict["subject_xnat"]+'_'+f.__getattr__('StudyDate')
-        else:
+        if patient_dict["session_xnat"]:
             session = patient_dict["session_xnat"]
+        else:
+            if OPTIONS.add_date:
+                if 'SeriesDate' in f:
+                    session = patient_dict["subject_xnat"]+'_'+f.__getattr__('SeriesDate')
+                elif 'StudyDate' in f:
+                    session = patient_dict["subject_xnat"]+'_'+f.__getattr__('StudyDate')
+                else:
+                    print 'Date not found ... setting session to subject'
+                    session = patient_dict["subject_xnat"]
+            else:
+                session = patient_dict["subject_xnat"]
         comment = PCOMMENT_TEMPLATE.format(project=patient_dict["project_xnat"],
                                            subject=patient_dict["subject_xnat"],
                                            session=session)
@@ -259,6 +269,7 @@ def anonymize_file(in_path, out_path, patient_dict, keep=(), remove=(), keep_pri
     if comment:
         f.PatientComments = comment
         # set the PatientID to the subjectID:
+        f.PatientName = patient_dict["subject_xnat"]
         f.PatientID = patient_dict["subject_xnat"]
 
     # Set PatientBirthDate:
@@ -341,6 +352,7 @@ if __name__ == '__main__':
                 patient_start_found = False
             else:
                 patient_start_found = True
+
             for p_dict in PATIENTS_LIST:
                 if OPTIONS.first_patient and p_dict['patient_id'] == OPTIONS.first_patient:
                     patient_start_found = True

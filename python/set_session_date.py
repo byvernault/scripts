@@ -28,7 +28,7 @@ def parse_args():
     return argp.parse_args()
 
 def edit_session_date(xnat, session_info):
-    date = session_info['label'].split('_')[1]
+    date = session_info['label'].split('_')[-1]
     date = date[:4]+'-'+date[4:6]+'-'+date[6:]
     print "%s - %s" % (session_info['label'], date)
     if session_info['date'] == date:

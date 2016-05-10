@@ -20,7 +20,7 @@ from datetime import datetime
 CVS_STR_TEMPLATE = """{project},{subject},{sessiontype},{session},\
 {scan},{scantype},{scandescription},{scanquality},{resource},{fpath}"""
 
-DICOM_FIELDS = {"subject":[0x0010,0x0010], "scan":[0x0020,0x0011], "scantype":[0x0008,0x103E], "date":[0x0008,0x0022], "time":[0x0008,0x0032]}
+DICOM_FIELDS = {"subject":[0x00100010], "scan":[0x00200011], "scantype":[0x0008103E], "date":[0x00080021], "time":[0x00080032]}
 
 def parse_args():
     """ Parser for arguments """
@@ -29,10 +29,6 @@ def parse_args():
     argp = ArgumentParser(prog='organise_dicomfolder', description=usage)
     argp.add_argument('-d', '--dicomfolder', dest='dicomfolder',
                       help='Directory containing DICOMs.', required=True)
-    argp.add_argument('-p', '--project', dest='project',
-                      help='Project ID on XNAT.', required=True)
-    argp.add_argument('-t', '--sessionType', dest='sessiontype', required=False,
-                      help='Session Type for XNAT. By default: MR', default="MR")
     return argp.parse_args()
 
 def is_dicom(fpath):
@@ -49,26 +45,42 @@ def is_dicom(fpath):
 
     return False
 
-def read_info_dicom(dicom_path):
+def read_info_dicom():
     """
-        looping through the directory to find dicom and separate them by series
+        looping through the directory to find dicom and separate them by study/series
 
-        :param directory: directory containing the dicom.
         :return python list of dict: list of dictionary containing the information for the csv for each dicoms
     """
-    dcm_header = dicom.read_file(dicom_path)
-    dicom_dict = dict()
+    dicoms_dict = dict()
 
-    for key, field in DICOM_FIELDS.items():
-        #try:
-        info = dcm_header[field[0],field[1]].value
-        if info:
-            dicom_dict[key] = str(info).replace(' ', '_')
-        """except:
-            print "warning: could not read header tag %s, %s from %s" % (field[0], field[1], dicom_path)
-            return None"""
+    # dicom that could not be identified
+    #unknown_dicom_dir = os.path.join(DIRECTORY, "unknown_dicoms")
+    #if not os.path.exists(unknown_dicom_dir):
+    #    os.makedirs(unknown_dicom_dir)
+    other_files = os.path.join(DIRECTORY, "other_files")
+    if not os.path.exists(other_files):
+        os.makedirs(other_files)
 
-    return dicom_dict
+    for name in os.listdir(DIRECTORY):
+        fpath = os.path.join(DIRECTORY, name)
+        if os.path.isfile(fpath) and is_dicom(fpath):
+            dcm_header = dicom.read_file(fpath)
+            if dcm_header.Modality.upper() == 'PR':
+                continue
+            else:
+                if dcm_header.StudyInstanceUID not in dicoms_dict.keys():
+                    dicoms_dict[dcm_header.StudyInstanceUID] = dict()
+                else:
+                    if dcm_header.SeriesNumber not in dicoms_dict[dcm_header.StudyInstanceUID].keys():
+                        dicoms_dict[dcm_header.StudyInstanceUID][dcm_header.SeriesNumber] = {'files':[fpath], 'type':dcm_header.SeriesDescription, 'date':dcm_header.SeriesDate}
+                    else:
+                        dicoms_dict[dcm_header.StudyInstanceUID][dcm_header.SeriesNumber]['files'].append(fpath)
+            #else:
+            #    shutil.move(fpath, unknown_dicom_dir)
+        elif name not in ["other_files", "unknown_dicoms"]:
+            shutil.move(fpath, other_files)
+
+    return dicoms_dict
 
 def get_csv_str(args, dicom_dict, dfolder):
     """
@@ -90,53 +102,34 @@ def get_csv_str(args, dicom_dict, dfolder):
                                    resource='DICOM',
                                    fpath=dfolder)
 
-def separate_dicoms(args):
+def separate_dicoms():
     """
         looping through the directory to find dicoms and separate them by series
 
-        :param args: arguments given to the scripts
-        :return list: cvs content
     """
-    if args.dicomfolder[-1] == '/':
-        args.dicomfolder = args.dicomfolder[:-1]
-    # list of files/folders in direcory
-    ffpaths = os.listdir(args.dicomfolder)
-    # csv content:
-    csv_content = list()
-    # dicom that could not be identified
-    unknown_dicom_dir = os.path.join(args.dicomfolder, "unknown_dicoms")
-    if not os.path.exists(unknown_dicom_dir):
-        os.makedirs(unknown_dicom_dir)
-    other_files = os.path.join(args.dicomfolder, "other_files")
-    if not os.path.exists(other_files):
-        os.makedirs(other_files)
-    for name in ffpaths:
-        fpath = os.path.join(args.dicomfolder, name)
-        if os.path.isfile(fpath) and is_dicom(fpath):
-            #open dicom and extract the information needed
-            dicom_dict = read_info_dicom(fpath)
-            if dicom_dict:
-                folder_name = "%s_%s_%s" % (dicom_dict['subject'], dicom_dict['date']+'_'+dicom_dict['time'].split('.')[0], dicom_dict['scan'])
-                dfolder = os.path.join(args.dicomfolder, folder_name)
-                if not os.path.exists(dfolder):
-                    os.makedirs(dfolder)
-                shutil.move(fpath, dfolder)
-                csv_content.append(get_csv_str(args, dicom_dict, dfolder))
-            else:
-                shutil.move(fpath, unknown_dicom_dir)
-        elif name not in ["other_files", "unknown_dicoms"]:
-            shutil.move(fpath, other_files)
+    print "1) Reading Dicoms files in the folder %s " % DIRECTORY
+    dicoms_info = read_info_dicom()
+    print "   Founded %s study(ies)" % len(dicoms_info.keys())
+    print "2) Sorting the dicoms into folders in %s " % DIRECTORY
+    for study, series in dicoms_info.items():
+        studydir = os.path.join(DIRECTORY, study)
+        if not os.path.exists(studydir):
+            os.makedirs(studydir)
 
-    return list(set(csv_content))
+        #Create series folder and move files:
+        for serie, info in series.items():
+            seriesdir = os.path.join(studydir, "%s-%s.%s" % (serie, info['type'], str(info['date'])))
+            if not os.path.exists(seriesdir):
+                os.makedirs(seriesdir)
+            for fp in info['files']:
+                shutil.move(fp, seriesdir)
 
 if __name__ == '__main__':
     OPTIONS = parse_args()
     print "Separate DICOM in a folder by reading the header."
     print "Time: ", str(datetime.now())
 
-    # Get the folders/files in directory
-    CSV_CONTENT = separate_dicoms(OPTIONS)
-    print "Csv content for uploading using Xnatupload:"
-    print '==================================================================='
-    print "\n".join(CSV_CONTENT)
-    print '===================================================================\n'
+    DIRECTORY = OPTIONS.dicomfolder
+    if DIRECTORY[-1] == '/':
+        DIRECTORY = DIRECTORY[:-1]
+    separate_dicoms()

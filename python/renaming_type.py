@@ -11,8 +11,11 @@ def read_txtfile(csvfile):
 
 if __name__ == "__main__":
     # Variables:
-    project = "PICTURE"
+    project = "Prisma_upgrade"
     #csvfile = "/Users/byvernault/Downloads/session_dates_file.csv"
+    types = {"MPRAGE":"MPRAGE",
+             "localizer":"Localizer",
+             "T1":"T1"}
     """types = {"WIP WIP WIP DCE 1.3mm match FOV SENSE": "DCE",
              "VISTA SENSE": "VISTA",
              "mp-rage":"T1",
@@ -46,25 +49,25 @@ if __name__ == "__main__":
              'ep2d_diff_new 16 measipat':"EP2D_DIFF",
              'dADC_all sFOV AP 4b':"ADC"}"""
 
-    xnat = XnatUtils.get_interface(host="https://prostate-xnat.cs.ucl.ac.uk", user='byvernault', pwd='20289_cmic')
+    xnat = XnatUtils.get_interface(host="http://cmic-xnat.cs.ucl.ac.uk", user='byvernault', pwd='20289_cmic')
 
     list_scans = XnatUtils.list_project_scans(xnat, project)
-    """for scan in list_scans:
+    for scan in list_scans:
         for key, value in types.items():
             if key in scan['type']:#scan['ID'].lower():
                 print "%s - %s - %s - %s" % (scan["session_label"], scan["ID"], scan["type"], scan["series_description"])
                 scan_obj = XnatUtils.get_full_object(xnat, scan)
                 scan_obj.attrs.set("type", value)
                 #scan_obj.attrs.set("series_description", scan['ID'])
-                #scan_obj.attrs.set("quality", "usable")"""
+                #scan_obj.attrs.set("quality", "usable")
 
-    for scan in list_scans:
+    #for scan in list_scans:
         #if "T2" == scan['type']:
         #    print scan['series_description']
-        if "ADC" == scan['type'] and "dDWI_ADC" == scan['series_description']:#scan['ID'].lower():
-            print "%s - %s - %s - %s" % (scan["session_label"], scan["ID"], scan["type"], scan["series_description"])
-            scan_obj = XnatUtils.get_full_object(xnat, scan)
-            scan_obj.attrs.set("type", "DWI ADC")
+        #if "ADC" == scan['type'] and "dDWI_ADC" == scan['series_description']:#scan['ID'].lower():
+        #    print "%s - %s - %s - %s" % (scan["session_label"], scan["ID"], scan["type"], scan["series_description"])
+        #    scan_obj = XnatUtils.get_full_object(xnat, scan)
+        #    scan_obj.attrs.set("type", "DWI ADC")
 
     """session_to_change = read_txtfile(csvfile)
     list_sessions = XnatUtils.list_sessions(xnat, project)

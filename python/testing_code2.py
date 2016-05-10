@@ -1,49 +1,43 @@
-"""
-    TEST Script for different purpose
-"""
+"""TEST number 2 Script for different purpose."""
 
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
+import os
+from dax import XnatUtils
+
+import Ben_functions
 
 __author__ = 'byvernault'
 __email__ = 'b.yvernault@ucl.ac.uk'
-__purpose__ = "Test Code"
+__purpose__ = "Test Code 2"
 
-import os
+HEADER = """object_type,project_id,subject_label,session_label,as_label"""
 
-def parse_args():
-    """
-    Parser for arguments
-    """
-    from argparse import ArgumentParser
-    usage = "Generates csv files from folder."
-    argp = ArgumentParser(prog='testing_code', description=usage)
-    argp.add_argument('-d', dest='directory',
-                      help="Directory where the folders containing the data are stored.")
-    return argp.parse_args()
-
-def make_csv():
-    """
-        make csv
-    """
-    print 'patient_id,project_xnat,subject_xnat,session_xnat,folder_path'
-    for labels in os.listdir(OPTIONS.directory):
-        if os.path.isdir(os.path.join(OPTIONS.directory, labels)):
-            las = labels.split('-')
-            str_code = ''
-            int_code = ''
-            for c in list(las[0]):
-                try:
-                    _ = int(c)
-                    int_code += c
-                except:
-                    str_code += c
-            subject = '%s%s' % (str_code.upper(), int_code)
-            for folder in os.listdir(os.path.abspath(os.path.join(OPTIONS.directory, labels))):
-                spath = os.path.abspath(os.path.join(OPTIONS.directory, labels, folder))
-                for scan_folder in os.listdir(spath):
-                    print "%s%s,PICTURE,%s,,%s" % (str_code, int_code, subject, os.path.join(spath, scan_folder))
 
 if __name__ == '__main__':
-    OPTIONS = parse_args()
-    make_csv()
+    directory = '/Users/byvernault/test_1946/'
+    excel_file = '/Users/byvernault/Downloads/uploaded_05May2016.csv'
+    row_excel = Ben_functions.read_csv(excel_file, header=['subject',
+                                                           'session'])
+    li_sessions = [row['session'].strip() for row in row_excel]
+
+    XNAT = XnatUtils.get_interface(host=os.environ['XN'])
+
+    li_scans = XnatUtils.list_project_scans(XNAT, '1946')
+    li_scans = [scan for scan in li_scans
+                if scan['type'] == '1946_PET_NAC_DYNAMIC_0_60MIN']
+
+    row = list()
+    for scan in li_scans:
+        if scan['session_label'] not in li_sessions:
+            msg = 'Download scan number %s for session %s'
+            print msg % (scan['ID'], scan['session_label'])
+            res_obj = XnatUtils.get_full_object(XNAT, scan).resource('DICOM')
+            if res_obj.exists() and len(res_obj.files().get()) > 0:
+                print ' 1) start download...'
+                data_dir = os.path.join(directory, scan['session_label'])
+                if not os.path.exists(data_dir):
+                    os.makedirs(data_dir)
+                dl_files = XnatUtils.download_files_from_obj(data_dir, res_obj)
+                print ' 2) Files downloaded: %s' % dl_files
+            else:
+                print 'Error: no files found for DICOM on XNAT. \
+                       Test using curl and check catalog file.'
