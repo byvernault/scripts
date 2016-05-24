@@ -1,0 +1,161 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Delete Assessors from a project on XNAT.
+
+Created on Jan 24, 2013.
+Edited on May 24, 2016.
+
+@author: Benjamin Yvernault
+"""
+
+import os
+import getpass
+
+from dax import XnatUtils
+
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "Delete assessors on XNAT via pyxnat."
+__version__ = '1.0.0'
+__modifications__ = """Created on Jan 24, 2013.
+Edited on May 24, 2016.
+"""
+
+
+def parse_args():
+    """Parser for arguments."""
+    from argparse import ArgumentParser
+    argp = ArgumentParser(prog='XnatdeleteAssessors', description=__purpose__)
+    argp.add_argument("-p", "--project", dest="project", required=True,
+                      help="Project ID on XNAT or list of Project ID")
+    argp.add_argument("-t", "--type", dest="proctype", required=True,
+                      help="Process type you want to delete in the project. \
+E.G: fMRIQA,dtiQA_v2.")
+    argp.add_argument("-s", "--status", dest="status", default=None,
+                      help="Specify a status for the assessors to be deleted. \
+E.G : NEED_INPUTS")
+    argp.add_argument("-x", "--txtfile", dest="txtfile", default=None,
+                      help="File txt with at each line the label of the \
+assessor you want to delete. E.G for label: \
+project-x-subject-x-experiment-x-scan-x-process_name.")
+    argp.add_argument('--host', dest='host', default=None,
+                      help='Host for XNAT. Default: using $XNAT_HOST.')
+    argp.add_argument('-u', '--username', dest='username', default=None,
+                      help='Username for XNAT. Default: using $XNAT_USER.')
+    return argp.parse_args()
+
+
+def get_assessor_list():
+    """Get list of assessors filtered from XNAT."""
+    li_assessors = list()
+    if ARGS.txtfile:
+        if not os.path.isFile(ARGS.txtfile):
+            raise Exception('%s file not found' % ARGS.txtfile)
+        else:
+            with open(ARGS.txtfile, 'rb') as f:
+                for line in f:
+                    # get the assessor_label
+                    asse_label = line.split('\n')[0]
+                    asse_handler = XnatUtils.AssessorHandler(asse_label)
+                    if asse_handler.is_valid():
+                        li_assessors.append(asse_handler)
+    else:
+        li_assessors = XnatUtils.list_project_assessors(XNAT, ARGS.project)
+        li_assessors = filter(lambda x:
+                              x['proctype'] in ARGS.proctype.split(','),
+                              li_assessors)
+        if ARGS.status:
+            li_assessors = filter(lambda x:
+                                  x['procstatus'] in ARGS.status.split(','),
+                                  li_assessors)
+    return li_assessors
+
+
+def print_assessor_list():
+    """Print assessors found to be deleted."""
+    print '\t%*s' % (-20, 'Assessor_label')
+    for assessor in LI_ASSESSORS:
+        if isinstance(assessor, XnatUtils.AssessorHandler):
+            asse_label = assessor.assessor_label
+        elif isinstance(assessor, dict):
+            asse_label = assessor['label']
+        else:
+            raise Exception('Error: assessor object unknown in the list of \
+assessors. (Not a AssessorHandler from XnatUtils in DAX or \
+a python dictionary)')
+        print '\t%s' % asse_label
+
+
+def ask_user_delete():
+    """Ask user to confirm the deletion."""
+    answer = ''
+    while answer not in ['Y', 'y', 'n', 'N']:
+        answer = raw_input('Do you want to delete all this assessor?(Y/N)\n')
+    return answer
+
+
+def delete_assessor_list():
+    """Delete assessors from list."""
+    for assessor in LI_ASSESSORS:
+        if isinstance(assessor, XnatUtils.AssessorHandler):
+            asse_label = assessor.assessor_label
+            assessor_obj = assessor.select_assessor(XNAT)
+        elif isinstance(assessor, dict):
+            asse_label = assessor['label']
+            assessor_obj = XnatUtils.select_assessor(XNAT, assessor['label'])
+        else:
+            raise Exception('Error: assessor object unknown in the list of \
+assessors. (Not a AssessorHandler from XnatUtils in DAX or \
+a python dictionary)')
+
+        if assessor_obj.exists():
+            assessor_obj.delete()
+            print'  * Assessor '+asse_label+' deleted'
+        else:
+            print'  * warning - Assessor '+asse_label+' NOT FOUND'
+
+
+if __name__ == '__main__':
+    ARGS = parse_args()
+
+    try:
+        if ARGS.host:
+            HOST = ARGS.host
+        else:
+            HOST = os.environ['XNAT_HOST']
+        if ARGS.username:
+            MSG = "Please provide the password for user <%s> \
+on xnat(%s):" % (ARGS.username, HOST)
+            PWD = getpass.getpass(prompt=MSG)
+        else:
+            PWD = None
+
+        print 'INFO: connection to xnat <%s>:' % (HOST)
+        XNAT = XnatUtils.get_interface(host=ARGS.host,
+                                       user=ARGS.username,
+                                       pwd=PWD)
+        LI_ASSESSORS = get_assessor_list()
+        if not len(LI_ASSESSORS) > 0:
+            print 'INFO: No assessor found. Exit.'
+        else:
+            print 'INFO: '+str(len(LI_ASSESSORS))+' assessors found.'
+            # show the list:
+            print_assessor_list()
+
+            # ask if it's good to delete:
+            answer = ask_user_delete()
+            if answer in ['Y', 'y']:
+                run = raw_input('Are you sure?(Y/N)\n')
+                if run in ['Y', 'y']:
+                    print '\nINFO: deleting assessors ...'
+                    # delete
+                    delete_assessor_list()
+                else:
+                    print 'INFO: Delete assessor CANCELED...'
+            else:
+                print 'INFO: Delete assessor CANCELED...'
+    finally:
+        XNAT.disconnect()
+        # Display:
+        print '=====================================================\n'
