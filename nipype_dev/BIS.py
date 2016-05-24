@@ -24,10 +24,12 @@
 # All other command line invocations, we pass the parameters onto the underlying program.
 
 # Import needed libraries
+import os
+import sys
 import atexit
 import tempfile
 from datetime import datetime, date, time
-from _niftkCommon import *
+#from _niftkCommon import *
 from glob import glob
 import webbrowser
 

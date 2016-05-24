@@ -9,12 +9,12 @@ __author__ = 'byvernault'
 __email__ = 'b.yvernault@ucl.ac.uk'
 __purpose__ = "Test Code 2"
 
-HEADER = """object_type,project_id,subject_label,session_label,as_label"""
+HEADER = """object_type,project_id,subject_label,session_type,session_label,as_label,as_type,as_description,quality,resource,fpath"""
 
 
 if __name__ == '__main__':
     directory = '/Users/byvernault/test_1946/'
-    excel_file = '/Users/byvernault/Downloads/uploaded_05May2016.csv'
+    """excel_file = '/Users/byvernault/Downloads/uploaded_05May2016.csv'
     row_excel = Ben_functions.read_csv(excel_file, header=['subject',
                                                            'session'])
     li_sessions = [row['session'].strip() for row in row_excel]
@@ -40,4 +40,23 @@ if __name__ == '__main__':
                 print ' 2) Files downloaded: %s' % dl_files
             else:
                 print 'Error: no files found for DICOM on XNAT. \
-                       Test using curl and check catalog file.'
+                       Test using curl and check catalog file.'"""
+
+    csv_file = '/Users/byvernault/tempROI/upload_report.csv'
+    row_csv = Ben_functions.read_csv(csv_file)
+    row_csv = [r for r in row_csv if r['resource'] != 'SNAPSHOTS']
+    for row in row_csv:
+        r = list()
+        for h in HEADER.split(','):
+            if h == 'as_label':
+                r.append(row.get('resource', '').split('ROI_')[1])
+            elif h == 'as_type' or h == 'as_description':
+                r.append('')
+            elif h == 'quality':
+                r.append('usable')
+            elif h == 'resource':
+                r.append('OsiriX')
+            else:
+                r.append(row.get(h, None))
+
+        print ','.join(r)

@@ -1,25 +1,18 @@
-"""
-    Remove any fields from DICOM header that contains Patient Health information
+"""Remove any fields from DICOM header that contains Patient Health information.
 
-    Probably upgrade for the script if remove other tags:
-    <--------------------------------------------------->
-    # Removing more tags
-    for name in tags:
-        if name in dcm:
-            dcm.data_element(name).value = ''
-        else:
-            print "   error: tag %s not found." % (name)
-    <--------------------------------------------------->
+Probably upgrade for the script if remove other tags:
+<--------------------------------------------------->
+# Removing more tags
+for name in tags:
+    if name in dcm:
+        dcm.data_element(name).value = ''
+    else:
+        print "   error: tag %s not found." % (name)
+<--------------------------------------------------->
 """
 
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-__author__ = 'byvernault'
-__email__ = 'b.yvernault@ucl.ac.uk'
-__purpose__ = "Anonymize DICOM header."
-__version__ = '1.0.0'
-__modifications__ = '15 December 2015 - Original write'
 
 import os
 import csv
@@ -28,7 +21,13 @@ import dicom
 import subprocess as sb
 from datetime import datetime
 
-########### VARIABLES ############
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "Anonymize DICOM header."
+__version__ = '1.0.0'
+__modifications__ = '15 December 2015 - Original write'
+
+# VARIABLES
 CSV_HEADER = ["patient_id", "project_xnat", "subject_xnat", "session_xnat", "folder_path"]
 PCOMMENT_TEMPLATE = """Project:{project};Subject:{subject};Session:{session}"""
 REPORT_HEADER = ['old_id', 'new_id', 'InstitutionAddress', 'PatientAge', 'MilitaryRank',
@@ -108,6 +107,8 @@ def parse_args():
                       help='Force to overwrite the previous DICOM', default=None)
     argp.add_argument('-p', '--startingPatient', dest='first_patient',
                       help='When restarting the process, patient id to start from', default=None)
+    argp.add_argument('--sendXnat', dest='send_xnat', action="store_true",
+                      help='Send the dicom to XNAT at the end.')
     return argp.parse_args()
 
 def read_csv():
