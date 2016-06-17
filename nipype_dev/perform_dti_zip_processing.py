@@ -137,12 +137,12 @@ parser.add_argument('-x', '-y', '-z',
 args = parser.parse_args()
 
 if args.ped is None:
-    print 'ERROR: argument --ped: expected one argument, \
-make sure to use --ped='
+    sys.stderr.write('ERROR: argument --ped: expected one argument, \
+make sure to use --ped=\n')
     sys.exit(1)
 if args.pedwarn:
-    print 'ERROR: One of -x, -y or -z found, did you mean \
---ped=-x, --ped=-y --ped=-z?'
+    sys.stderr.write('ERROR: One of -x, -y or -z found, did you mean \
+--ped=-x, --ped=-y --ped=-z?\n')
     sys.exit(1)
 
 result_dir = os.path.abspath(args.output_dir)
@@ -154,8 +154,9 @@ if len(zipped_dwis) > 0:
     dwis = list()
     bvals = list()
     bvecs = list()
-    print 'Info: unzipping inputs since some files are .zip in dwis. \
-If some of the inputs are nifti, please remove the zip files.'
+    sys.stdout.write('Info: unzipping inputs since some files are .zip in dwis. \
+If some of the inputs are nifti, please edit your input and remove \
+the zip files.\n')
     # Unzipping the dwis inputs:
     for zips in zipped_dwis:
         zip_dir = os.path.join(result_dir, os.path.basename(zips)[:-4])
@@ -170,7 +171,8 @@ If some of the inputs are nifti, please remove the zip files.'
            not dwis_unzipped or \
            len(dwis_unzipped) != len(bvals_unzipped) or \
            len(dwis_unzipped) != len(bvecs_unzipped):
-            print 'ERROR: missing files (bval/bvec or nii) in zip.'
+            msg = 'ERROR: missing files (bval/bvec or nii) in zip.\n'
+            sys.stderr.write(msg)
             sys.exit(1)
         dwis.append(dwis_unzipped[0])
         bvals.append(bvals_unzipped[0])
@@ -178,16 +180,16 @@ If some of the inputs are nifti, please remove the zip files.'
 else:
     if (len(args.dwis) != len(args.bvals)) or \
        (len(args.dwis) != len(args.bvecs)):
-        print 'ERROR: The number of BVAL and BVEC files should match the \
-number of DWI files.'
+        sys.stderr.write('ERROR: The number of BVAL and BVEC files should match the \
+number of DWI files.\n')
         sys.exit(1)
     dwis = [os.path.abspath(f) for f in args.dwis]
     bvals = [os.path.abspath(f) for f in args.bvals]
     bvecs = [os.path.abspath(f) for f in args.bvecs]
 
-print 'Info - inputs: niftis : %s' % dwis
-print '                bvals : %s' % bvals
-print '                bvecs : %s' % bvecs
+sys.stdout.write('Info - inputs: niftis : %s\n' % dwis)
+sys.stdout.write('                bvals : %s\n' % bvals)
+sys.stdout.write('                bvecs : %s\n' % bvecs)
 
 do_susceptibility_correction = True
 if args.fieldmapmag is None or args.fieldmapphase is None:
@@ -206,7 +208,7 @@ merge_initial_dwis.inputs.in_bvals = bvals
 merge_initial_dwis.inputs.in_bvecs = bvecs
 
 r = create_diffusion_mri_processing_workflow(
-    t1_mask_provided=args.t1_mask is not None,
+    result_dir, t1_mask_provided=args.t1_mask is not None,
     susceptibility_correction=do_susceptibility_correction,
     in_susceptibility_params=[args.rot, args.etd, args.ped],
     name='dmri_workflow', resample_in_t1=False, log_data=True,
@@ -222,10 +224,10 @@ if args.t1.lower().endswith('.zip'):
     zip_dir = os.path.join(result_dir, os.path.basename(args.t1)[:-4])
     if not os.path.exists(zip_dir):
         os.mkdir(zip_dir)
-    os.system('unzip -d %s -j -o %s > /dev/null' % (zip_dir, zips))
+    os.system('unzip -d %s -j -o %s > /dev/null' % (zip_dir, args.t1))
     t1_unzipped = find_files(zip_dir, '.nii.gz')
     if not t1_unzipped:
-        print 'ERROR: T1 files not found in the zip given.'
+        sys.stderr.write('ERROR: T1 files not found in the zip given.\n')
         sys.exit(1)
     t1 = t1_unzipped[0]
 else:
