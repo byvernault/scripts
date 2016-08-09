@@ -1,62 +1,82 @@
 """TEST number 2 Script for different purpose."""
 
 import os
-from dax import XnatUtils
+import argparse
+import sys
+import zipfile
+# from dax import XnatUtils
 
-import Ben_functions
+# import Ben_functions
 
 __author__ = 'byvernault'
 __email__ = 'b.yvernault@ucl.ac.uk'
 __purpose__ = "Test Code 2"
 
-HEADER = """object_type,project_id,subject_label,session_type,session_label,as_label,as_type,as_description,quality,resource,fpath"""
+
+def find_files(directory, ext):
+    """Return the files in subdirectories witht the right extension.
+
+    :param directory: directory where the data are located
+    :param ext: extension to look for
+    :return: python list of files
+    """
+    li_files = list()
+    for root, _, filenames in os.walk(directory):
+        li_files.extend([os.path.join(root, f) for f in filenames
+                         if f.lower().endswith(ext.lower())])
+    return li_files
+
+
+def zip_list(li_files, zip_path, subdir=False):
+    """Zip all the files in the list into a zip file.
+
+    :param li_files: python list of files for the zip
+    :param zip_path: zip path
+    :param subdir: copy the subdirectories as well. Default: False.
+    """
+    if not zip_path.lower().endswith('.zip'):
+        zip_path = '%s.zip' % zip_path
+    with zipfile.ZipFile(zip_path, 'w') as myzip:
+        for fi in li_files:
+            if subdir:
+                myzip.write(fi, compress_type=zipfile.ZIP_DEFLATED)
+            else:
+                myzip.write(fi, arcname=os.path.basename(fi),
+                            compress_type=zipfile.ZIP_DEFLATED)
+
+
+def unzip_list(zip_path, directory):
+    """Unzip all the files from the zip file and give the list of files.
+
+    :param zip_path: zip path
+    :param directory: directory where to extract the data
+    :return: python list of files
+    """
+    li_files = list()
+    if not os.path.exists(directory):
+        raise Exception('Folder %s does not exist.')
+    with zipfile.ZipFile(zip_path, 'r') as myzip:
+        for member in myzip.infolist():
+            path = directory
+            words = member.filename.split('/')
+            for word in words[:-1]:
+                drive, word = os.path.splitdrive(word)
+                head, word = os.path.split(word)
+                if word in (os.curdir, os.pardir, ''):
+                    continue
+                path = os.path.join(path, word)
+            myzip.extract(member, path)
+            li_files.append(path)
+    return li_files
 
 
 if __name__ == '__main__':
-    directory = '/Users/byvernault/test_1946/'
-    """excel_file = '/Users/byvernault/Downloads/uploaded_05May2016.csv'
-    row_excel = Ben_functions.read_csv(excel_file, header=['subject',
-                                                           'session'])
-    li_sessions = [row['session'].strip() for row in row_excel]
+    li_files = ['/Users/byvernault/Downloads/mr_240114_Pros-001/inputs/1101-DTI_iso/xDTIisoSENSE.bval',
+                '/Users/byvernault/Downloads/mr_240114_Pros-001/inputs/1101-DTI_iso/xDTIisoSENSE.bvec',
+                '/Users/byvernault/Downloads/mr_240114_Pros-001/inputs/1101-DTI_iso/xDTIisoSENSE.nii.gz']
+    zip_path = '/Users/byvernault/test.zip'
+    zip_list(li_files, zip_path)
 
-    XNAT = XnatUtils.get_interface(host=os.environ['XN'])
-
-    li_scans = XnatUtils.list_project_scans(XNAT, '1946')
-    li_scans = [scan for scan in li_scans
-                if scan['type'] == '1946_PET_NAC_DYNAMIC_0_60MIN']
-
-    row = list()
-    for scan in li_scans:
-        if scan['session_label'] not in li_sessions:
-            msg = 'Download scan number %s for session %s'
-            print msg % (scan['ID'], scan['session_label'])
-            res_obj = XnatUtils.get_full_object(XNAT, scan).resource('DICOM')
-            if res_obj.exists() and len(res_obj.files().get()) > 0:
-                print ' 1) start download...'
-                data_dir = os.path.join(directory, scan['session_label'])
-                if not os.path.exists(data_dir):
-                    os.makedirs(data_dir)
-                dl_files = XnatUtils.download_files_from_obj(data_dir, res_obj)
-                print ' 2) Files downloaded: %s' % dl_files
-            else:
-                print 'Error: no files found for DICOM on XNAT. \
-                       Test using curl and check catalog file.'"""
-
-    csv_file = '/Users/byvernault/tempROI/upload_report.csv'
-    row_csv = Ben_functions.read_csv(csv_file)
-    row_csv = [r for r in row_csv if r['resource'] != 'SNAPSHOTS']
-    for row in row_csv:
-        r = list()
-        for h in HEADER.split(','):
-            if h == 'as_label':
-                r.append(row.get('resource', '').split('ROI_')[1])
-            elif h == 'as_type' or h == 'as_description':
-                r.append('')
-            elif h == 'quality':
-                r.append('usable')
-            elif h == 'resource':
-                r.append('OsiriX')
-            else:
-                r.append(row.get(h, None))
-
-        print ','.join(r)
+    raw_input('decompress?')
+    li_files2 = unzip_list(zip_path, '/Users/byvernault/testunzip/')
+    print "LIST OF FILES: %s" % li_files2

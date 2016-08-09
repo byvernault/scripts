@@ -29,12 +29,14 @@ def check_images_validity(images):
 def create_boundary_shift_integral(input_images, output_dir, input_masks=None,
                                    name='boundary_shift_integral'):
 
-    subject_ids = [split_filename(os.path.basename(f))[1] for f in input_images]
+    subject_ids = [split_filename(os.path.basename(f))[1]
+                   for f in input_images]
 
     # Create a workflow to process the images
     workflow = pe.Workflow(name=name)
     workflow.base_dir = output_dir
     workflow.base_output_dir = name
+
     # Define the input and output node
     input_node = pe.Node(
         interface=niu.IdentityInterface(
@@ -49,7 +51,8 @@ def create_boundary_shift_integral(input_images, output_dir, input_masks=None,
                     'out_mask_files']),
         name='output_node')
 
-    images_valid = check_images_validity([os.path.abspath(f) for f in input_images])
+    images_valid = check_images_validity([os.path.abspath(f)
+                                          for f in input_images])
     if images_valid is False:
         print('ERROR: One or more input images contain significant amount of negative values,')
         print('please check the provenance of the inputs.')

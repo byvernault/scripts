@@ -5,6 +5,7 @@ import dicom
 import glob
 import subprocess as sb
 from datetime import datetime
+from dax import XnatUtils
 
 __author__ = 'byvernault'
 __email__ = 'b.yvernault@ucl.ac.uk'
@@ -95,7 +96,7 @@ def set_dicom_field(dcmfolder, comment):
         edit the information of the DICOM for patients comment
 
         :param dcmfolder: folder containing the dicoms
-        :param comment: value for the patients comment
+        #:param comment: value for the patients comment
     """
     for dcmfile in os.listdir(dcmfolder):
         dicom_path = os.path.join(dcmfolder, dcmfile)
@@ -112,7 +113,7 @@ if __name__ == '__main__':
     print "Time: ", str(datetime.now())
 
     # Get the folders/files in directory
-    scan_list = list()
+    """scan_list = list()
     for subject in os.listdir(os.path.abspath(OPTIONS.directory)):
         subpath = os.path.join(os.path.abspath(OPTIONS.directory), subject)
         if os.path.isdir(subpath):
@@ -125,5 +126,38 @@ if __name__ == '__main__':
                             scan_list.append(results)
 
     edit_info_dicom(scan_list)
+    """
+
+    xnat = XnatUtils.get_interface()
+    # Scans list
+    scan_list = XnatUtils.list_project_scans(xnat, OPTIONS.project)
+    for sc in scan_list:
+        print "dicoms for session %s / scan %s " % (sc['session_label'],
+                                                    sc['ID'])
+
+        res_obj = XnatUtils.get_full_object(xnat, sc).resource('DICOM')
+        if not res_obj.exists():
+            continue
+        tmpdir = os.path.join(os.path.abspath(
+                                OPTIONS.directory),
+                              sc['session_label'],
+                              sc['ID'])
+        if not os.path.exists(tmpdir):
+            os.makedirs(tmpdir)
+        else:
+            print '  skip it. already processed.'
+            continue
+
+        dicom_files = XnatUtils.download_files_from_obj(directory=tmpdir,
+                                                        resource_obj=res_obj)
+        for dicom_path in dicom_files:
+            print "   file: %s " % dicom_path
+            dcm = dicom.read_file(dicom_path)
+            # edit the header
+            dcm.PatientName = sc['subject_label']
+            dcm.PatientID = sc['session_label']
+            dcm.save_as(dicom_path)
+        XnatUtils.upload_files_to_obj(dicom_files, res_obj, remove=True)
+        print "------"
     print "DICOMs read and edited."
     print '==================================================================='
