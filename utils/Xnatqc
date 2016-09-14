@@ -1,0 +1,752 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Visually control the quality on XNAT project data \
+using NiftyMIDAS.
+
+Created on Sep 9, 2016.
+
+@author: Benjamin Yvernault
+"""
+
+import os
+import sys
+import ttk
+import getpass
+import logging
+import Tkinter
+import subprocess
+from dax import XnatUtils
+from datetime import datetime
+from dax.task import NEEDS_QA, COMPLETE
+
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "Visually control the quality on XNAT project data \
+using NiftyMIDAS."
+__version__ = '1.0.0'
+__modifications__ = """Created on Sep 9, 2016.
+"""
+
+DEFAULT_ARGUMENTS = {
+    'username': None,
+    'outputfile': None,
+    'force': False,
+    'xnat_type': None,
+    'full_regex': False,
+    'resources': None,
+    'is_scan': False,
+    'host': None,
+    'session': None,
+    'directory': None,
+    'project': None,
+    'subject': None,
+    'niftymidas': None,
+    'extra_data': None,
+    'dl_inputs': False}
+
+DESCRIPTION = """What is the script doing :
+   *Visually control the quality on XNAT project data using NiftyMIDAS.
+
+Examples:
+   *Quality control all T1 images:
+        Xnatqc -p PID -d /tmp/qcPID -x scan:T1 --res scan:T1:NIFTI
+   *Quality control all GIF assessors:
+        Xnatqc -p PID -d /tmp/qcPID -x assessor:GIF_Parcellation_v1 \
+--res scan:T1:NIFTI,assessor:GIF_Parcellation_v1:LABEL
+"""
+
+MSG_FORMAT1 = 'OPTIONS --res: Wrong format for %s, need to be like \
+assessor:proctype:resource or scan:scantype:resource'
+MSG_FORMAT2 = 'OPTIONS --res: Wrong format for %s, value for obj_type not \
+set to scan or assessor'
+MSG_FORMAT3 = 'OPTIONS --res: Wrong format for %s, value for association \
+not set to 0 or 1'
+
+NIFTYMIDAS_FORMAT = """{cmd} -- {xargs} --drag-and-drop {labels}"""
+OPEN_FORMAT = """--open {label}:{path}"""
+
+
+class XNATScanQCGUI(ttk.Frame):
+    """GUI for editing QC."""
+    def __init__(self, root, xnat_obj, xnat_dict):
+        """Init method."""
+        # XNAT:
+        self.xnat_obj = xnat_obj
+        self.xnat_dict = xnat_dict
+
+        # GUI
+        ttk.Frame.__init__(self, root, width=500, height=400)
+        self.root = root
+        self.root.title(u"Scans")
+
+        # text labels
+        self.label = ttk.Label(root, text=u"Xnatqc", font=("Helvetica", 32))
+
+        # Xnat info:
+        self.xnatdata = ttk.Labelframe(root, text='XNAT information')
+        self.project = ttk.Label(
+                    self.xnatdata,
+                    text=u"Project ID: %s" % xnat_dict['project_id'])
+        self.subject = ttk.Label(
+                    self.xnatdata,
+                    text=u"Subject label: %s" % xnat_dict['subject_label'])
+        self.session = ttk.Label(
+                    self.xnatdata,
+                    text=u"Session label: %s" % xnat_dict['session_label'])
+        self.qobject = ttk.Label(
+                    self.xnatdata,
+                    text=u"Scan ID: %s" % xnat_dict['ID'])
+        self.qtype = ttk.Label(
+                    self.xnatdata,
+                    text=u"Scan type: %s" % xnat_dict['type'])
+
+        # Frame label for QC status form
+        self.lfdata = ttk.Labelframe(root, text='Quality Control Form')
+        # QC Status
+        self.quality_var = Tkinter.StringVar()
+        self.quality_var.set(xnat_dict['quality'])
+        self.qlabel = ttk.Label(self.lfdata, text=u"Scan quality")
+        self.quality = ttk.OptionMenu(self.lfdata, self.quality_var,
+                                      'usable', 'questionable', 'unusable')
+        # Notes
+        self.notes_var = Tkinter.StringVar()
+        self.nlabel = ttk.Label(self.lfdata, text=u"Notes:")
+        self.notes = ttk.Entry(self.lfdata, textvariable=self.notes_var)
+        self.notes_var.set('')
+
+        # buttons
+        self.stop = ttk.Button(root, command=self.stop,
+                               text='Close')
+        self.submit = ttk.Button(root, command=self.submit_qc,
+                                 text='Submit')
+
+        # Grid:
+        self.grid(column=0, row=0, columnspan=4, rowspan=5)
+        self.label.grid(columnspan=2, column=1, row=0)
+        self.xnatdata.grid(columnspan=4, column=0, row=1)
+        west_stk = Tkinter.N+Tkinter.S+Tkinter.W
+        self.project.grid(column=0, row=0, sticky=west_stk)
+        self.subject.grid(column=0, row=1, sticky=west_stk)
+        self.session.grid(column=0, row=2, sticky=west_stk)
+        self.qobject.grid(column=0, row=3, sticky=west_stk)
+        self.qtype.grid(column=0, row=4, sticky=west_stk)
+        self.lfdata.grid(columnspan=4, column=0, row=2)
+        self.qlabel.grid(columnspan=1, column=0, row=0, sticky=west_stk)
+        self.quality.grid(columnspan=3, column=1, row=0, sticky=west_stk)
+        self.nlabel.grid(columnspan=1, column=0, row=1, sticky=west_stk)
+        self.notes.grid(columnspan=3, rowspan=3, column=1, row=1,
+                        sticky=west_stk)
+        self.stop.grid(column=1, row=3)
+        self.submit.grid(column=2, row=3)
+
+    def stop(self):
+        """Stop the script."""
+        self.root.destroy()
+        sys.exit()
+
+    def submit_qc(self):
+        """Submit the qc to XNAT."""
+        self.xnat_obj.attrs.mset(
+                {'quality': self.xnat_dict['quality'],
+                 'note': self.quality_var.get()})
+        self.root.destroy()
+
+    def close_window(self):
+        """Close window will terminate the script."""
+        self.root.destroy()
+        sys.exit()
+
+
+class XNATAssessorQCGUI(ttk.Frame):
+    """GUI for editing QC."""
+    def __init__(self, root, xnat_obj, xnat_dict):
+        """Init method."""
+        # XNAT:
+        self.xnat_obj = xnat_obj
+        self.xnat_dict = xnat_dict
+
+        # GUI
+        ttk.Frame.__init__(self, root, width=500, height=400)
+        self.root = root
+        self.root.title(u"Assessors")
+
+        # text labels
+        self.label = ttk.Label(root, text=u"Xnatqc",
+                               font=("Helvetica", 32))
+
+        # Xnat info:
+        self.xnatdata = ttk.Labelframe(root, text='XNAT information')
+        self.project = ttk.Label(
+                    self.xnatdata,
+                    text=u"Project ID: %s" % xnat_dict['project_id'])
+        self.subject = ttk.Label(
+                    self.xnatdata,
+                    text=u"Subject label: %s" % xnat_dict['subject_label'])
+        self.session = ttk.Label(
+                    self.xnatdata,
+                    text=u"Session label: %s" % xnat_dict['session_label'])
+        self.qtype = ttk.Label(
+                    self.xnatdata,
+                    text=u"Process type: %s" % xnat_dict['proctype'])
+        scanid = None
+        if len(xnat_dict['label'].split('-x-')) > 4:
+            scanid = xnat_dict['label'].split('-x-')[3]
+        if scanid:
+            self.scanid = ttk.Label(
+                        self.xnatdata,
+                        text=u"on scan: %s" % scanid)
+
+        # Frame label for QC status form
+        self.lfdata = ttk.Labelframe(root, text='Quality Control Form')
+        # QC Status
+        self.qcstatus_var = Tkinter.StringVar()
+        self.qcstatus_var.set('                ')
+        self.qlabel = ttk.Label(self.lfdata, text=u"QC Status")
+        self.qcstatus = ttk.OptionMenu(self.lfdata, self.qcstatus_var,
+                                       '', 'Passed', 'Good', 'OK', 'Poor',
+                                       'Do Not Run', 'Rerun', 'Needs QA',
+                                       'Needs Edits', 'Bad', 'Failed')
+        # Method
+        self.method_var = Tkinter.StringVar()
+        self.mlabel = ttk.Label(self.lfdata, text=u"Method:")
+        self.method = ttk.Entry(self.lfdata, textvariable=self.method_var)
+        self.method_var.set('NiftyMIDAS')
+        # Notes
+        self.notes_var = Tkinter.StringVar()
+        self.nlabel = ttk.Label(self.lfdata, text=u"Notes:")
+        self.notes = ttk.Entry(self.lfdata, textvariable=self.notes_var)
+        self.notes_var.set('')
+
+        # buttons
+        self.stop = ttk.Button(root, command=self.stop,
+                               text='Close')
+        self.submit = ttk.Button(root, command=self.submit_qc,
+                                 text='Submit')
+
+        # Grid:
+        self.grid(column=0, row=0, columnspan=4, rowspan=5)
+        self.label.grid(columnspan=2, column=1, row=0)
+        self.xnatdata.grid(columnspan=4, column=0, row=1)
+        west_stk = Tkinter.N+Tkinter.S+Tkinter.W
+        self.project.grid(column=0, row=0, sticky=west_stk)
+        self.subject.grid(column=0, row=1, sticky=west_stk)
+        self.session.grid(column=0, row=2, sticky=west_stk)
+        self.qtype.grid(column=0, row=3, sticky=west_stk)
+        if scanid:
+            self.scanid.grid(column=0, row=4, sticky=west_stk)
+        self.lfdata.grid(columnspan=4, column=0, row=2)
+        self.qlabel.grid(columnspan=1, column=0, row=0, sticky=west_stk)
+        self.qcstatus.grid(columnspan=3, column=1, row=0, sticky=west_stk)
+        self.mlabel.grid(columnspan=1, column=0, row=1, sticky=west_stk)
+        self.method.grid(columnspan=3, column=1, row=1, sticky=west_stk)
+        self.nlabel.grid(columnspan=1, column=0, row=2, sticky=west_stk)
+        self.notes.grid(columnspan=3, rowspan=3, column=1, row=2,
+                        sticky=west_stk)
+        self.stop.grid(column=1, row=3)
+        self.submit.grid(column=2, row=3)
+
+    def stop(self):
+        """Stop the script."""
+        self.root.destroy()
+        sys.exit()
+
+    def submit_qc(self):
+        """Submit the qc to XNAT."""
+        date = '{:%d-%m-%Y}'.format(datetime.now())
+        xsitype = self.xnat_dict['xsiType']
+        self.xnat_obj.attrs.mset(
+                {xsitype+'/validation/status': self.qcstatus_var.get(),
+                 xsitype+'/validation/validated_by': USER,
+                 xsitype+'/validation/date': date,
+                 xsitype+'/validation/notes': self.notes_var.get(),
+                 xsitype+'/validation/method': self.method_var.get()})
+        self.root.destroy()
+
+    def close_window(self):
+        """Close window will terminate the script."""
+        self.root.destroy()
+        sys.exit()
+
+
+def parse_args():
+    """Parser for arguments."""
+    from argparse import ArgumentParser, RawDescriptionHelpFormatter
+    argp = ArgumentParser(prog='Xnatqc', description=DESCRIPTION,
+                          formatter_class=RawDescriptionHelpFormatter)
+    argp.add_argument('--host', dest='host', default=None,
+                      help='Host for XNAT. Default: using $XNAT_HOST.')
+    argp.add_argument('-u', '--username', dest='username', default=None,
+                      help='Username for XNAT. Default: using $XNAT_USER.')
+    argp.add_argument("-d", "--directory", dest="directory", default=None,
+                      help="Directory where data will be temporarly stored.")
+    argp.add_argument("-p", "--project", dest="project", default=None,
+                      help="Project ID from XNAT.")
+    argp.add_argument("--subj", dest="subject", default=None,
+                      help="Subjects you want to QC. \
+Format: a comma separated string (E.G: --subj VUSTP2,VUSTP3).")
+    argp.add_argument("--sess", dest="session", default=None,
+                      help="Sessions you want to QC. \
+Format: a comma separated string (E.G: --sess VUSTP2b,VUSTP3a)")
+    argp.add_argument("--scan", dest="is_scan", action='store_true',
+                      help="Use if controlling a scan, otherwise, \
+it's an assessor.")
+    argp.add_argument("-t", "--type", dest="xnat_type", default=None,
+                      help="Type of object to be qc (proctype or scantype).")
+    argp.add_argument("-r", "--res", dest="resources", default=None,
+                      help="Resources to download from object to visualize \
+with NiftyMIDAS.")
+    argp.add_argument("-i", "--inputs", dest="dl_inputs", action='store_true',
+                      help="Download the NIFTI from the scan associated to \
+the process that you want to qc.")
+    argp.add_argument("-e", "--extraData", dest="extra_data", default=None,
+                      nargs='+', type=str, help="Define extra data to download \
+to visualize with NiftyMIDAS. Format: obj_type:type:resource. E.G obj_type1:\
+type1,type2:resource1,resource2 obj_type2:type3:resource3.")
+    argp.add_argument("--force", dest="force", action="store_true",
+                      help="Force qc all object regarding previous status \
+on the XNAT project.")
+    argp.add_argument("--fullRegex", dest="full_regex", action='store_true',
+                      help="Use full regex for filtering data.")
+    argp.add_argument("--niftymidas", dest="niftymidas", default=None,
+                      help="Path to niftymidas.")
+    argp.add_argument("-o", "--output", dest="outputfile", default=None,
+                      help="Redirect display to a file.")
+    return argp
+
+
+def setup_info_logger(name, logfile):
+    """
+    Using logger for the executables output.
+     Setting the information for the logger.
+
+    :param name: Name of the logger
+    :param logfile: log file path to write outputs
+    :return: logging object
+    """
+    if logfile:
+        handler = logging.FileHandler(logfile, 'w')
+    else:
+        handler = logging.StreamHandler()
+
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    return logger
+
+
+def get_option_list(option):
+    """Method to convert option value to a list, None if empty.
+
+    :param option: string representing the option
+    :return: None if empty, 'all' if all selected, list otherwise
+    """
+    if not option:
+        return None
+    elif option.lower() == 'all':
+        return 'all'
+    elif option == 'nan':
+        return None
+    else:
+        return option.split(',')
+
+
+def get_info_xnat():
+    """Extract information on objects to be qc from XNAT."""
+    try:
+        # Log to XNAT
+        LOGGER.info('INFO: connection to xnat <%s>:' % (HOST))
+        xnat = XnatUtils.get_interface(host=OPTIONS.host,
+                                       user=USER,
+                                       pwd=PWD)
+        if OPTIONS.is_scan:
+            li_objs = XnatUtils.list_project_scans(xnat, OPTIONS.project)
+        else:
+            li_objs = XnatUtils.list_project_assessors(xnat, OPTIONS.project)
+
+        # filter subjects & sessions:
+        for field, value in {'subject_label': OPTIONS.subject,
+                             'session_label': OPTIONS.session}.items():
+            values = get_option_list(value)
+            if values == 'all':
+                values = None
+            li_objs = filter_list(li_objs, field, value)
+
+        # filter to keep item to QC and only Needs QA for assessor or
+        # questionable/usable data for scan if not force
+        if OPTIONS.is_scan:
+            li_objs = filter_list(li_objs, 'type', [OPTIONS.xnat_type])
+            if not OPTIONS.force:
+                li_objs = filter_list(li_objs, 'quality', ['questionable'])
+        else:
+            li_objs = filter_list(li_objs, 'proctype', [OPTIONS.xnat_type])
+            li_objs = filter_list(li_objs, 'procstatus', [COMPLETE])
+            if not OPTIONS.force:
+                li_objs = filter_list(li_objs, 'qcstatus', [NEEDS_QA])
+
+    finally:
+        xnat.disconnect()
+
+    return li_objs
+
+
+def filter_list(obj_list, field, values, nor=False):
+    """Method to filter the list for a variable.
+
+    :param obj_list:
+    :param field: field name to be filter
+    :param values: variable values (list)
+    :return: list filtered
+    """
+    if values:
+        obj_list = XnatUtils.filter_list_dicts_regex(
+                                obj_list,
+                                field,
+                                values,
+                                nor=nor,
+                                full_regex=OPTIONS.full_regex)
+    return obj_list
+
+
+def qc_objects():
+    """QC objects on XNAT: scans or assessors.
+
+    :return: None
+    """
+    nbo = len(LI_OBJS)
+    for ind, obj_dict in enumerate(LI_OBJS):
+        # Log to XNAT
+        xnat = XnatUtils.get_interface(host=OPTIONS.host,
+                                       user=USER,
+                                       pwd=PWD)
+        if OPTIONS.is_scan:
+            label = '%s - %s' % (obj_dict['session_label'], obj_dict['ID'])
+        else:
+            label = obj_dict['label']
+        msg = ' - control quality for %s - %d/%d'
+        LOGGER.info(msg % (label, ind+1, nbo))
+        # Object on XNAT data
+        obj = XnatUtils.get_full_object(xnat, obj_dict)
+        # download data
+        nii_files = download_qc_data(obj, obj_dict)
+        # disconnect after each download to let the user to qc without timeout
+        xnat.disconnect()
+
+        # QC: call NiftyMIDAS
+        open_viewer(nii_files)
+
+        # Set status:
+        set_status(obj, obj_dict)
+
+        # Removing old files:
+        XnatUtils.clean_directory(DIRECTORY)
+
+
+def download_qc_data(obj, obj_dict):
+    """Download the data from obj, requested by user.
+
+    :param xnat: pyxnat interface obj
+    :param obj: pyxnat obj for assessor or scan
+    :param obj_dict: dictionary with information on object
+    :return: list of local files
+    """
+    if OPTIONS.is_scan:
+        label = os.path.join(obj_dict['session_label'], obj_dict['ID'])
+    else:
+        label = os.path.join(obj_dict['session_label'], obj_dict['label'])
+    nii_files = list()
+    resources = get_option_list(OPTIONS.resources)
+    LOGGER.info('   downloading the data from XNAT ...')
+    # download data from resource:
+    for resource in resources:
+        # Directory
+        tmp_dir = os.path.join(DIRECTORY, label)
+        if not os.path.isdir(tmp_dir):
+            os.makedirs(tmp_dir)
+        if OPTIONS.is_scan:
+            res_obj = obj.resource(resource)
+        else:
+            res_obj = obj.out_resource(resource)
+        if not res_obj.exists():
+            LOGGER.warning('No resource for %s ' % label)
+            continue
+        # download:
+        nii_files = XnatUtils.download_files_from_obj(tmp_dir, res_obj)
+
+    # download extra data
+    LOGGER.info('   downloading extra data from XNAT ...')
+    nii_files.extend(download_extra(obj.parent(),
+                                    obj_dict['session_label'],
+                                    obj_dict.get('label', None)))
+    # Removing files that are not nifti:
+    nii_files = [f for f in nii_files
+                 if f.endswith('.nii') or f.endswith('.nii.gz')]
+    return nii_files
+
+
+def download_extra(session_obj, session_label, assessor_label):
+    """Download data to open with NiftyMIDAS.
+
+    :param session_obj: pyxnat object representing the session
+    :param session_label: label for the session
+    :param assessor_label: label of the assessor qc'ed if defined
+    :return: list of files downloaded (niftys only)
+    """
+    nii_files = list()
+    if OPTIONS.dl_inputs and not OPTIONS.is_scan:
+        scan_id = assessor_label.split('-x-')[3]
+        scan_obj = session_obj.scan(scan_id)
+        scan_id = scan_obj.id()
+        tmp_dir = os.path.join(DIRECTORY, session_label,
+                               scan_id)
+        if not os.path.isdir(tmp_dir):
+            os.makedirs(tmp_dir)
+        if scan_obj.resource('NIFTI').exists():
+            nii_files.extend(XnatUtils.download_files_from_obj(
+                    tmp_dir,
+                    scan_obj.resource('NIFTI')))
+        else:
+            LOGGER.warning('No resource for scan %s / %s'
+                           % (session_label, scan_id))
+    if EXTRAS:
+        for extra in EXTRAS:
+            if extra[0] == 'scan':
+                scans_obj = XnatUtils.get_good_scans(session_obj,
+                                                     extra[1].split(','))
+                for scan_obj in scans_obj:
+                    scan_id = scan_obj.id()
+                    tmp_dir = os.path.join(DIRECTORY, session_label,
+                                           scan_id)
+                    if not os.path.isdir(tmp_dir):
+                        os.makedirs(tmp_dir)
+                    if scan_obj.resource(extra[2]).exists():
+                        nii_files.extend(XnatUtils.download_files_from_obj(
+                                tmp_dir,
+                                scan_obj.resource(extra[2])))
+                    else:
+                        LOGGER.warning('No resource for scan %s / %s'
+                                       % (session_label, scan_id))
+            else:
+                asses_obj = XnatUtils.get_good_assessors(session_obj,
+                                                         extra[1].split(','))
+                for asse_obj in asses_obj:
+                    assessor_label = asse_obj.label()
+                    tmp_dir = os.path.join(DIRECTORY, session_label,
+                                           assessor_label)
+                    if not os.path.isdir(tmp_dir):
+                        os.makedirs(tmp_dir)
+                    if asse_obj.out_resource(extra[2]).exists():
+                        nii_files.extend(XnatUtils.download_files_from_obj(
+                                tmp_dir,
+                                asse_obj.out_resource(extra[2])))
+                    else:
+                        LOGGER.warning('No out resource for %s'
+                                       % assessor_label)
+    return nii_files
+
+
+def open_viewer(nii_files):
+    """Use the viewer NiftyMIDAS to control the data downloaded from XNAT.
+
+    :param nii_files: list of dictionary with label and local path
+    :return: None
+    """
+    LOGGER.info('   open NiftyMIDAS viewer ...')
+    cmd = [NIFTYMIDAS_EXE] + nii_files
+    """for nii_dict in nii_files:
+        xargs = OPEN_FORMAT.format(label=nii_dict['label'],
+                                   fpath=nii_dict['path'])
+    labels = [nii['label'] for nii in nii_files]
+    cmd = NIFTYMIDAS_FORMAT.format(cmd=NIFTYMIDAS_EXE,
+                                   xargs=' '.join(xargs),
+                                   labels=labels)"""
+    process = subprocess.Popen(cmd,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    if stderr:
+        print 'ERROR when calling NiftyMIDAS: %s' % stderr
+
+
+def set_status(xnat_obj, xnat_dict):
+    """Use Tkinter to generate a GUI for QC.
+
+    :param xnat_obj: pyxnat Object to set status
+    :param xnat_dict: dictinary of xnat object
+    :return: None
+    """
+    LOGGER.info('   GUI to set qc status ...')
+    root = Tkinter.Tk()
+    root.geometry('500x400')
+    root.configure(background='grey')
+    root.attributes("-topmost", True)
+    if OPTIONS.is_scan:
+        XNATScanQCGUI(root, xnat_obj, xnat_dict)
+    else:
+        XNATAssessorQCGUI(root, xnat_obj, xnat_dict)
+    root.mainloop()
+    LOGGER.info('   done.')
+
+
+def check_options():
+    """Method to check the options specified by the user.
+
+    :return: True if OPTIONS are fine, False otherwise
+    """
+    # Required:
+    for opt, val in {'-p/--project': OPTIONS.project,
+                     '-t/--type': OPTIONS.xnat_type,
+                     '-r/--res': OPTIONS.resources,
+                     '-d/--directory': OPTIONS.directory}.items():
+        if not val:
+            print "OPTION ERROR: %s required." % opt
+            return False
+    # Check project
+    if ',' in OPTIONS.project:
+        print "OPTION ERROR: -p/--project contains a undefined character: ','.\
+ Only one XNAT project can be used at a time."
+        return False
+    return True
+
+
+def main_display():
+    """Main display of the executables before any process.
+
+    :return: None
+    """
+    print '################################################################'
+    print '#                            XNATQC                            #'
+    print '#                                                              #'
+    print '# Developed by the MASI Lab Vanderbilt University, TN, USA.    #'
+    print '# If issues, please start a thread here:                       #'
+    print '# https://groups.google.com/forum/#!forum/vuiis-cci            #'
+    print '# Usage:                                                       #'
+    print '#     Quality control data on XNAT by using NiftyMIDAS.        #'
+    print '# Parameters :                                                 #'
+    if vars(OPTIONS) == DEFAULT_ARGUMENTS:
+        print '#     No Arguments given                                       \
+#'
+        print '#     See the help bellow or Use "Xnatqc" -h                   \
+#'
+        print '################################################################\
+\n'
+        PARSER.print_help()
+        sys.exit()
+    else:
+        for key, d in {'XNAT Host': {'value': OPTIONS.host, 'end': False},
+                       'XNAT User': {'value': OPTIONS.username, 'end': False},
+                       'Directory': {'value': OPTIONS.directory, 'end': True},
+                       'Project': {'value': OPTIONS.project, 'end': False},
+                       'Subject(s)': {'value': OPTIONS.subject, 'end': False},
+                       'Session(s)': {'value': OPTIONS.session, 'end': False},
+                       'Data type': {'value': OPTIONS.xnat_type, 'end': False},
+                       'Resources': {'value': OPTIONS.resources,
+                                     'end': False},
+                       'Extra data': {'value': OPTIONS.extra_data,
+                                      'end': False},
+                       'Force': {'value': OPTIONS.force, 'end': False},
+                       'Regex': {'value': OPTIONS.full_regex, 'end': False},
+                       'log file': {'value': OPTIONS.outputfile, 'end': False},
+                       'NiftyMIDAS': {'value': OPTIONS.niftymidas,
+                                      'end': True},
+                       }.items():
+            display_var(key, d['value'], d['end'])
+        print '###############################################################\
+#'
+
+
+def display_var(name, value, end=False):
+    """Display the variable for main_display.
+
+    :param name: variable name
+    :param value: variable value
+    :param end: keep the end of the string visible (default beginning)
+    :return None
+    """
+    if value:
+        if isinstance(value, bool):
+            val = 'on'
+        else:
+            val = get_proper_str(value)
+        print('#     %*s -> %*s#'
+              % (-20, name, -33, val))
+
+
+def get_proper_str(str_option, end=False):
+    """
+    Method to shorten a string into the proper size for display
+
+    :param str_option: string to shorten
+    :param end: keep the end of the string visible (default beginning)
+    :return: shortened string
+    """
+    if len(str_option) > 32:
+        if end:
+            return '...'+str_option[-29:]
+        else:
+            return str_option[:29]+'...'
+    else:
+        return str_option
+
+
+if __name__ == '__main__':
+    PARSER = parse_args()
+    OPTIONS = PARSER.parse_args()
+    main_display()
+    SHOULD_RUN = check_options()
+    LOGGER = setup_info_logger('Xnatqc', OPTIONS.outputfile)
+
+    if SHOULD_RUN:
+        DIRECTORY = XnatUtils.makedir(os.path.abspath(OPTIONS.directory))
+        if OPTIONS.host:
+            HOST = OPTIONS.host
+        else:
+            HOST = os.environ['XNAT_HOST']
+        if OPTIONS.username:
+            USER = OPTIONS.username
+            MSG = "Please provide the password for user <%s> \
+on xnat(%s):" % (OPTIONS.username, HOST)
+            PWD = getpass.getpass(prompt=MSG)
+        else:
+            USER = os.environ['XNAT_USER']
+            PWD = os.environ['XNAT_PASS']
+
+        # NiftyMIDAS
+        NIFTYMIDAS_EXE = ''
+        if OPTIONS.niftymidas:
+            if not OPTIONS.niftymidas.endswith('NiftyMIDAS'):
+                NIFTYMIDAS_EXE = os.paht.join(OPTIONS.niftymidas, 'NiftyMIDAS')
+            else:
+                NIFTYMIDAS_EXE = OPTIONS.niftymidas
+        elif 'NIFTYMIDAS_EXE' in os.environ:
+            NIFTYMIDAS_EXE = os.environ['NIFTYMIDAS_EXE']
+        else:
+            print 'ERROR: NiftyMIDAS not found. Please use the option \
+--niftymidas or set the environment variable NIFTYMIDAS_EXE.'
+            sys.exit()
+
+        # Get information out of XNAT
+        LI_OBJS = get_info_xnat()
+        if not len(LI_OBJS) > 0:
+            LOGGER.info('INFO: No object to be qc. Exit.')
+        else:
+            LOGGER.info('INFO: '+str(len(LI_OBJS))+' objects found.')
+
+            # Edit the resource:
+            EXTRAS = list()
+            if OPTIONS.extra_data:
+                for str_res in OPTIONS.extra_data:
+                    rlabel = str_res.split(':')
+                    if len(rlabel) != 3:
+                        LOGGER.warning(MSG_FORMAT1 % str_res)
+                        continue
+                    if rlabel[0] not in ['scan', 'assessor']:
+                        LOGGER.warning(MSG_FORMAT2 % str_res)
+                        continue
+                    EXTRAS.append(rlabel)
+
+        # QC the session
+        qc_objects()
+
+    LOGGER.info('===========================================================\
+========')

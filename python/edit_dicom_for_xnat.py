@@ -148,16 +148,17 @@ if __name__ == '__main__':
             print '  skip it. already processed.'
             continue
 
-        dicom_files = XnatUtils.download_files_from_obj(directory=tmpdir,
-                                                        resource_obj=res_obj)
-        for dicom_path in dicom_files:
-            print "   file: %s " % dicom_path
-            dcm = dicom.read_file(dicom_path)
-            # edit the header
-            dcm.PatientName = sc['subject_label']
-            dcm.PatientID = sc['session_label']
-            dcm.save_as(dicom_path)
-        XnatUtils.upload_files_to_obj(dicom_files, res_obj, remove=True)
+        dicom_file = XnatUtils.download_file_from_obj(directory=tmpdir,
+                                                      resource_obj=res_obj)
+        # for dicom_path in dicom_files:
+        print "   file: %s " % dicom_file
+        dcm = dicom.read_file(dicom_file)
+        # edit the header
+        dcm.PatientName = sc['subject_label']
+        dcm.PatientID = sc['session_label']
+        dcm.SeriesDescription = sc['series_description']
+        dcm.save_as(dicom_file)
+        XnatUtils.upload_file_to_obj(dicom_file, res_obj, remove=True)
         print "------"
     print "DICOMs read and edited."
     print '==================================================================='
