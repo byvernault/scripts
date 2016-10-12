@@ -1,0 +1,166 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Download reconstruction from XNAT."""
+
+import os
+import re
+import fnmatch
+import getpass
+from dax import XnatUtils
+
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "XnatdlRecon"
+
+DESCRIPTION = """What is the script doing :
+   *Download reconstructions from XNAT.
+"""
+
+
+def parse_args():
+    """Parser for arguments."""
+    from argparse import ArgumentParser, RawDescriptionHelpFormatter
+    argp = ArgumentParser(prog='Xnatqc', description=DESCRIPTION,
+                          formatter_class=RawDescriptionHelpFormatter)
+    argp.add_argument('--host', dest='host', default=None,
+                      help='Host for XNAT. Default: using $XNAT_HOST.')
+    argp.add_argument('-u', '--username', dest='username', default=None,
+                      help='Username for XNAT. Default: using $XNAT_USER.')
+    argp.add_argument("-d", "--directory", dest="directory", default=None,
+                      help="Directory where data will be temporarly stored.")
+    argp.add_argument("-p", "--project", dest="project", default=None,
+                      help="Projects ID from XNAT.")
+    argp.add_argument("--subj", dest="subject", default=None,
+                      help="Subjects you want to QC. \
+Format: a comma separated string (E.G: --subj VUSTP2,VUSTP3).")
+    argp.add_argument("--sess", dest="session", default=None,
+                      help="Sessions you want to QC. \
+Format: a comma separated string (E.G: --sess VUSTP2b,VUSTP3a)")
+    argp.add_argument("--fullRegex", dest="full_regex", action='store_true',
+                      help="Use full regex for filtering data.")
+    return argp
+
+
+def filter_list_dicts_regex(list_dicts, key, expressions, nor=False,
+                            full_regex=False):
+    """Filter the list of dictionary from XnatUtils.list_* using the regex.
+
+    :param list_dicts: list of dictionaries to filter
+    :param key: key from dictionary to filter using regex
+    :param expressions: list of regex expressions to use (OR)
+    :param full_regex: use full regex
+    :return: list of items from the list_dicts that match the regex
+    """
+    flist = list()
+    if nor:
+        flist = list_dicts
+    for exp in expressions:
+        regex = extract_exp(exp, full_regex)
+        if nor:
+            flist = [d for d in flist if not regex.match(d[key])]
+        else:
+            flist.extend([d for d in list_dicts
+                          if regex.match(d[key])])
+    return flist
+
+
+def extract_exp(expression, full_regex=False):
+    """Extract the experession with or without full_regex.
+
+    :param expression: string to filter
+    :param full_regex: using full regex
+    :return: regex Object from re package
+    """
+    if not full_regex:
+        exp = fnmatch.translate(expression)
+    return re.compile(exp)
+
+
+def filter_list(obj_list, field, values, nor=False):
+    """Method to filter the list for a variable.
+
+    :param obj_list:
+    :param field: field name to be filter
+    :param values: variable values (list)
+    :return: list filtered
+    """
+    if values:
+        obj_list = XnatUtils.filter_list_dicts_regex(
+                                obj_list,
+                                field,
+                                values,
+                                nor=nor,
+                                full_regex=OPTIONS.full_regex)
+    return obj_list
+
+
+def get_option_list(option):
+    """Method to convert option value to a list, None if empty.
+
+    :param option: string representing the option
+    :return: None if empty, 'all' if all selected, list otherwise
+    """
+    if not option:
+        return None
+    elif option.lower() == 'all':
+        return None
+    elif option == 'nan':
+        return None
+    else:
+        return option.split(',')
+
+
+if __name__ == '__main__':
+    PARSER = parse_args()
+    OPTIONS = PARSER.parse_args()
+
+    print('===========================================================\
+========')
+    print 'Script: XnatdlRecon for Ninon only :) to download Reconstructions.'
+
+    try:
+        DIRECTORY = XnatUtils.makedir(os.path.abspath(OPTIONS.directory))
+        if OPTIONS.host:
+            HOST = OPTIONS.host
+        else:
+            HOST = os.environ['XNAT_HOST']
+        if OPTIONS.username:
+            USER = OPTIONS.username
+            MSG = "Please provide the password for user <%s> \
+on xnat(%s):" % (OPTIONS.username, HOST)
+            PWD = getpass.getpass(prompt=MSG)
+        else:
+            USER = os.environ['XNAT_USER']
+            PWD = os.environ['XNAT_PASS']
+
+        xnat = XnatUtils.get_interface(host=HOST, user=USER, pwd=PWD)
+
+        for project in OPTIONS.project.split(','):
+            proj_dir = sess_dir = os.path.join(DIRECTORY, project)
+            print 'Project: %s' % project
+            li_sessions = XnatUtils.list_sessions(xnat, OPTIONS.project)
+            # filter the list if subj or session set:
+            subjs = get_option_list(OPTIONS.subject)
+            li_sessions = filter_list(li_sessions, 'subject_label', subjs)
+            sess = get_option_list(OPTIONS.session)
+            li_sessions = filter_list(li_sessions, 'session_label', sess)
+            # Download sessions
+            nb_sess = len(li_sessions)
+            for ind, session in enumerate(li_sessions):
+                session_obj = XnatUtils.get_full_object(xnat, session)
+                print ' - Session %s - %d/%d' % (session['label'], ind,
+                                                 nb_sess)
+                sess_dir = os.path.join(proj_dir, session['label'])
+                for recon in session_obj.reconstructions():
+                    tmp_dir = os.path.join(sess_dir, recon.id())
+                    if not os.path.isdir(tmp_dir):
+                        os.makedirs(tmp_dir)
+                    print '   + downloading %s' % recon.id()
+                    for res in recon.out_resources():
+                        XnatUtils.download_files_from_obj(tmp_dir, res)
+    finally:
+        xnat.disconnect()
+    print "Let's go to lunch?"
+    print('===========================================================\
+========')

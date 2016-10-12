@@ -1,6 +1,7 @@
 # emacs: -*- mode: python; py-indent-offset: 4; indent-tabs-mode: nil -*-
 # vi: set ft=python sts=4 ts=4 sw=4 et:
 import os
+from PIL import Image
 import nipype.interfaces.utility as niu
 import nipype.pipeline.engine as pe
 import nipype.interfaces.fsl as fsl
@@ -14,18 +15,139 @@ MNI_TEMPLATE = os.path.join(os.environ['FSLDIR'], 'data', 'standard',
                             'MNI152_T1_2mm.nii.gz')
 MNI_TEMPLATE_MASK = os.path.join(os.environ['FSLDIR'], 'data', 'standard',
                                  'MNI152_T1_2mm_brain_mask_dil.nii.gz')
+HTML_TEMPLATE = """
+<html>
+<head>
+<link href="http://cmictig.cs.ucl.ac.uk/templates/design_control/favicon.ico" \
+rel="shortcut icon" type="image/x-icon">
+<title>BSI - Id: {patient}</title>
+<style>
+body {
+    font-family:"Tahoma",Helvetica,Sans-serif;
+}
+p { font-family:"Tahoma",Helvetica,Sans-serif; }
+td { font-family:"Tahoma",Helvetica,Sans-serif; }
+.title {
+    background:#E0E0E0;
+    border-top:solid 1px #EEEDED;
+    border-bottom:solid 1px #EEEDED;
+    width:100% !important;
+    max-width:100% !important;
+    height:40x;
+    padding-top:5px;
+    padding-left:5px;
+    padding-bottom:5px;
+    z-index:3
+}
+</style>
+</head>
+<body>
+<div><a href="http://cmictig.cs.ucl.ac.uk/" target="a"><img border \
+src="http://cmictig.cs.ucl.ac.uk/templates/design_control/images/s5_logo.png">\
+</a></div>
+<br>
+<div><h3>Atrophy report: {patient}</h3></div>
+<div class="title"><b>Brain extraction results</b></div>
+<p>These images show the tissue segmentation used to find the brain/non-brain \
+boundary.</p>
+<p><i>Baseline:</i> {b_mask} <br><i>Volume:</i> {vol1} mm^3<br><img border=0 \
+width="100%" src="{f_b_mask}"></p>
+<p><i>Follow-up:</i> {f_mask} <br><i>Volume:</i> {vol2} mm^3<br><img border=0 \
+width="100%" src="{f_f_mask}"></p>
+<br>
+<div class="title"><b>Brain extraction comparation between two time-points</b>\
+</div>
+<p><img border=0 width="100%" src="{seg}"></p>
+<br>
+<div class="title"><b>Baseline to follow-up registration results</b></div>
+<p><img border=0 width="100%" src="{reg}"></p>
+<br>
+<div class="title"><b>XOR region where BSI is computed</b></div>
+<p>Probability 0 <IMG SRC="http://cmictig.cs.ucl.ac.uk/softweb/img/orange.gif"\
+> 1
+<p><img border=0 width="100%" src="{xor}"></p>
+<br>
+<div class="title"><b>Final brain edge movement image results</b></div>
+<p>Atrophy <IMG SRC="http://cmictig.cs.ucl.ac.uk/softweb/img/blue.gif"> 0 \
+<IMG SRC="http://cmictig.cs.ucl.ac.uk/softweb/img/orange.gif"> Growth</p>
+<p><img border=0 width="100%" src="{bsi}"></p>
+<br>
+<div class="title"><b>Estimated BSI and PBVC</b></div>
+<p><font face="courier" size="3">BSI (ml)= {bsi_val}<br>PBVC (%)= {pbvc_val}\
+<br>ATROPHY (%)= {atrophy}<br>GROWTH (%)= {growth}</font></p>
+<div class="title"><b>Executed command line:</b></div>
+<p><font face="courier" size="-1">{cmd}</font></p>
+<div class="title"><b>Referencing this work</b></div>
+<p>Two-timepoint percentage brain volume change was estimated with GBSI \
+[Prados et al. 2014], part of NifTK software tools
+[URL:<a href="http://cmictig.cs.ucl.ac.uk/research/software/" target="a">\
+http://cmictig.cs.ucl.ac.uk/research/software</a>].</p>
+<b>GBSI method</b>
+<font size="-1"><em>
+<p>[Prados 2014] Prados, F., Cardoso, M. J., Leung, K. K., Cash, D. M., \
+Modat, M., Fox, N. C., Wheeler-Kingshott, C. A. M., Ourselin, S., \
+for the Alzheimer's Disease Neuroimaging Initiative. (2014)
+<BR>&nbsp;&nbsp;&nbsp;<a href=\
+"http://www.sciencedirect.com/science/article/pii/S0197458014005508" \
+target="a">Measuring brain atrophy with a generalized formulation of \
+the boundary shift integral.</a>
+<BR>&nbsp;&nbsp;&nbsp;Neurobiology of Aging.
+</p></em></font>
 
+<br>
+<b>BSI main method</b>
+<font size="-1"><em>
+<p>[Freeborough 1997] Freeborough, P. A., & Fox, N. C. (1997).
+<BR>&nbsp;&nbsp;&nbsp;<a href="http://www.ncbi.nlm.nih.gov/pubmed/9368118" \
+target="a">The boundary shift integral: an accurate and robust measure of \
+cerebral volume changes from registered repeat MRI.</a>
+<BR>&nbsp;&nbsp;&nbsp;IEEE transactions on medical imaging, 16(5), 623-9.
+</p></em></font>
 
-def check_images_validity(images):
-    import nibabel as nib
-    import numpy as np
-    for image in images:
-        data = nib.load(image).get_data()
-        positives = float(np.count_nonzero(data > 0))
-        negatives = float(np.count_nonzero(data < 0))
-        if negatives / (positives + negatives) > 0.05:
-            return False
-    return True
+<br>
+<b>KN-BSI method</b>
+<font size="-1"><em>
+<p>[Leung 2010] Leung, K. K., Clarkson, M. J., Bartlett, J. W., Clegg, S. L., \
+Jack, C. R., Weiner, M. W., Fox, N. C., Ourselin, S. (2010).
+<BR>&nbsp;&nbsp;&nbsp;<a href="\
+http://www.pubmedcentral.nih.gov/articlerender.fcgi?artid=2828361&tool=\
+pmcentrez&rendertype=abstract" \
+target="a">Robust atrophy rate measurement in Alzheimer's disease using \
+multi-site serial MRI: tissue-specific intensity normalization and parameter \
+selection.</a>
+<BR>&nbsp;&nbsp;&nbsp;NeuroImage, 50(2), 516-23.
+</p></em></font>
+
+<br>
+<b>pBSI method</b>
+<font size="-1"><em>
+<p>[Ledig 2012] Ledig, C., Wolz, R., Aljabar, P., Jyrki, L., & Rueckert, \
+D. (2012)
+<BR>&nbsp;&nbsp;&nbsp;<a href="http://picsl.upenn.edu/docs/nibad12_proceedings\
+_reduced_20120905.pdf" target="a">PBSI: A symmetric probabilistic extension \
+of the Boundary Shift Integral.</a>
+<BR>&nbsp;&nbsp;&nbsp;In MICCAI 2012 Workshop on Novel Imaging Biomarkers for \
+Alzheimer's Disease and Related Disorders (pp. 117-124).
+</p></em></font>
+
+<br>
+<b>Double Window-BSI</b>
+<font size="-1"><em>
+<p>[Schott 2010] Schott, J. M., Bartlett, J. W., Barnes, J., Leung, K. K., \
+Ourselin, S., & Fox, N. C. (2010)
+<BR>&nbsp;&nbsp;&nbsp;<a href="http://www.pubmedcentral.nih.gov/articlerender\
+.fcgi?artid=2947486&tool=pmcentrez&rendertype=abstract" target="a">Reduced \
+sample sizes for atrophy outcomes in Alzheimer's disease trials: baseline \
+adjustment.</a>
+<BR>&nbsp;&nbsp;&nbsp;Neurobiology of aging, 31(8), 1452-62, 1462.e1-2.
+</p></em></font>
+<br>
+<div align="center"><a href="http://cmictig.cs.ucl.ac.uk" target="a">\
+Translational Imaging Group</a> - <a href="http://ucl.ac.uk" target="a">\
+University College London</a></div>
+<br>
+</body>
+</html>"""
 
 
 def create_register_two_images_half_way(interpolation='NN',
@@ -168,6 +290,209 @@ def create_register_two_images_half_way(interpolation='NN',
     return workflow
 
 
+def generate_seg_png(label='png', name='generate_seg_png'):
+    """Workflow to generate seg png images."""
+    # Create a workflow to process the images
+    workflow = pe.Workflow(name=name)
+    workflow.base_output_dir = name
+
+    # Input node:
+    input_node = pe.Node(interface=niu.IdentityInterface(),
+                         name='input_node',
+                         fields=['in_file',
+                                 'overlay_file',
+                                 'png_file'])
+    if not input_node.inputs.png_file:
+        input_node.inputs.png_file = os.path.join(
+                os.path.basename(os.path.abspath(input_node.inputs.in_file)),
+                '%s%s' % (label, '.png'))
+    # Output node:
+    output_node = pe.Node(interface=niu.IdentityInterface(
+                          fields=['png_file']),
+                          name='output_node')
+
+    # Segmaths:
+    mul_node = pe.Node(interface=niftyseg.BinaryMaths(operation='mul'),
+                       name='multiplication_node')
+    workflow.connect([
+        (input_node, mul_node, [('in_file', 'in_file')]),
+        (input_node, mul_node, [('overlay_file', 'operand_file')])
+                     ])
+    # Stats 1:
+    stats_node1 = pe.Node(interface=fsl.ImageStats(op_string='-p 0'),
+                          name='stats1_node')
+    workflow.connect(mul_node, 'out_file', stats_node1, 'in_file')
+
+    # Segmaths:
+    sub_node = pe.Node(interface=niftyseg.BinaryMaths(operation='sub'),
+                       name='substraction_node')
+    workflow.connect([
+        (mul_node, sub_node, [('out_file', 'in_file')]),
+        (stats_node1, sub_node, [('out_stats', 'operand_value')])
+                     ])
+    # Mask:
+    mask_node = pe.Node(interface=fsl.ApplyMask(operation=''),
+                        name='mask_node')
+    workflow.connect([
+        (sub_node, mask_node, [('out_file', 'in_file')]),
+        (input_node, mask_node, [('overlay_file', 'mask_file')])
+                     ])
+    # Stats 1:
+    stats_node2 = pe.Node(interface=fsl.ImageStats(op_string='-P 95'),
+                          name='stats2_node')
+    workflow.connect(mask_node, 'out_file', stats_node2, 'out_file')
+
+    # overlay:
+    overlay_node = pe.Node(interface=fsl.Overlay(auto_thresh_bg=True,
+                                                 transparency=False,
+                                                 out_type=0),
+                           name='overlay_node')
+    overlay_node.inputs.stat_thresh = (1, stats_node2.outputs.out_stats)
+    workflow.connect([
+        (input_node, overlay_node, [('in_file', 'background_image')]),
+        (mask_node, overlay_node, [('out_file', 'stat_image')])
+                     ])
+
+    # Copy geometry:
+    cpgeom_mask = pe.Node(interface=fsl.CopyGeom(),
+                          name='copy_geometry')
+    workflow.connect([
+        (input_node, cpgeom_mask, [('in_file', 'in_file')]),
+        (overlay_node, cpgeom_mask, [('out_file', 'dest_file')])
+                     ])
+
+    # Slicer for three slices for each axis:
+    slicer_x = pe.MapNode(interface=fsl.Slicer(scaling=1, single_slice='x'),
+                          iterfield=['slice_number'],
+                          name='slicer_x')
+    slicer_x.inputs.slice_number = [0.4, 0.5, 0.6]
+    workflow.connect(overlay_node, 'out_file', slicer_x, 'in_file')
+    slicer_y = pe.MapNode(interface=fsl.Slicer(scaling=1, single_slice='y'),
+                          iterfield=['slice_number'],
+                          name='slicer_y')
+    slicer_y.inputs.slice_number = [0.4, 0.5, 0.6]
+    workflow.connect(overlay_node, 'out_file', slicer_y, 'in_file')
+    slicer_z = pe.MapNode(interface=fsl.Slicer(scaling=1, single_slice='z'),
+                          iterfield=['slice_number'],
+                          name='slicer_z')
+    slicer_z.inputs.slice_number = [0.4, 0.5, 0.6]
+    workflow.connect(overlay_node, 'out_file', slicer_z, 'in_file')
+
+    # PNGappend
+    # input list
+    input_png_append = pe.Node(interface=niu.Merge(), name='input_png_append')
+    workflow.connect([
+        (slicer_x, input_png_append, [('out_file', 'in1')]),
+        (slicer_y, input_png_append, [('out_file', 'in2')]),
+        (slicer_z, input_png_append, [('out_file', 'in3')])
+                     ])
+
+    append_pngs(input_png_append.out_file.out, input_node.inputs.png_file)
+    workflow.connect(input_node, 'png_file', output_node, 'png_file')
+
+
+def generate_gif(label='gif', name='generate_gif'):
+    """Generate gif with img as background, overlay1 and overlay2 as color."""
+    # Create a workflow to process the images
+    workflow = pe.Workflow(name=name)
+    workflow.base_output_dir = name
+
+    # Input node:
+    input_node = pe.Node(interface=niu.IdentityInterface(),
+                         name='input_node',
+                         fields=['in_file',
+                                 'overlay_file1',
+                                 'overlay_file2',
+                                 'gif_file'])
+
+    if not input_node.inputs.gif_file:
+        input_node.inputs.gif_file = os.path.join(
+                os.path.basename(os.path.abspath(input_node.inputs.in_file)),
+                '%s%s' % (label, '.gif'))
+    # Output node:
+    output_node = pe.Node(interface=niu.IdentityInterface(
+                          fields=['gif_file']),
+                          name='output_node')
+
+    # Overlay:
+    output_overlay = pe.Node(interface=niu.IdentityInterface(
+                             fields=['out_file']),
+                             name='overlay_out')
+    if input_node.inputs.overlay_file1:
+        overlay_node = pe.Node(interface=fsl.Overlay(auto_thresh_bg=True,
+                                                     transparency=False,
+                                                     out_type=0),
+                               name='overlay_node')
+        overlay_node.inputs.stat_thresh = (0.001, 1)
+        workflow.connect([
+            (input_node, overlay_node, [('in_file', 'background_image')]),
+            (input_node, overlay_node, [('overlay_file1', 'stat_image')])
+                         ])
+        if input_node.inputs.overlay_file2:
+            overlay_node.inputs.stat_thresh2 = (0.001, 1)
+            workflow.connect(input_node, 'overlay_file2',
+                             overlay_node, 'stat_image2')
+        # Copy geometry:
+        cpgeom = pe.Node(interface=fsl.CopyGeom(),
+                         name='copy_geometry')
+        workflow.connect([
+            (input_node, cpgeom, [('in_file', 'in_file')]),
+            (overlay_node, cpgeom, [('out_file', 'dest_file')])
+                         ])
+
+        # Connect output:
+        workflow(cpgeom, 'out_file', output_overlay, 'out_file')
+    else:
+        workflow(input_node, 'in_file', output_overlay, 'out_file')
+
+    # Slicer for three slices for each axis:
+    slicer_x = pe.MapNode(interface=fsl.Slicer(scaling=1, single_slice='x'),
+                          iterfield=['slice_number'],
+                          name='slicer_x')
+    slicer_x.inputs.slice_number = [0.4, 0.5, 0.6]
+    workflow.connect(output_overlay, 'out_file', slicer_x, 'in_file')
+    slicer_y = pe.MapNode(interface=fsl.Slicer(scaling=1, single_slice='y'),
+                          iterfield=['slice_number'],
+                          name='slicer_y')
+    slicer_y.inputs.slice_number = [0.4, 0.5, 0.6]
+    workflow.connect(output_overlay, 'out_file', slicer_y, 'in_file')
+    slicer_z = pe.MapNode(interface=fsl.Slicer(scaling=1, single_slice='z'),
+                          iterfield=['slice_number'],
+                          name='slicer_z')
+    slicer_z.inputs.slice_number = [0.4, 0.5, 0.6]
+    workflow.connect(output_overlay, 'out_file', slicer_z, 'in_file')
+
+    # PNGappend
+    # input list
+    input_png_append = pe.Node(interface=niu.Merge(), name='input_png_append')
+    workflow.connect([
+        (slicer_x, input_png_append, [('out_file', 'in1')]),
+        (slicer_y, input_png_append, [('out_file', 'in2')]),
+        (slicer_z, input_png_append, [('out_file', 'in3')])
+                     ])
+
+    append_pngs(input_png_append.out_file.out, input_node.inputs.gif_file)
+    workflow.connect(input_node, 'gif_file', output_node, 'gif_file')
+
+
+def append_pngs(list_png, out_file):
+    """Fct to append the pngs from the list.
+
+    :param list_png: list of png file path
+    """
+    image1 = Image.open(list_png[0])
+    (width1, height1) = image1.size
+    nb_images = len(list_png)
+    result = Image.new('RGB', (width1*nb_images, height1*nb_images))
+    for ind, png in enumerate(list_png):
+        if ind == 0:
+            result.paste(im=image1, box=(0, 0))
+        else:
+            image = Image.open(png)
+            result.paste(im=image, box=(width1, 0))
+    result.save(out_file)
+
+
 def create_boundary_shift_integral_two_images(lesion_masks=None,
                                               roi_masks=None,
                                               iso=False,
@@ -181,6 +506,7 @@ def create_boundary_shift_integral_two_images(lesion_masks=None,
                                               t2_mode=False,
                                               dil_kmeans=3,
                                               tkn=3,
+                                              patient=None,
                                               name='bsi_on_two_images'):
     """Main Workflow to compute boundary shift integral.
 
@@ -235,8 +561,8 @@ def create_boundary_shift_integral_two_images(lesion_masks=None,
                          fields=['in_files',
                                  'masks_files'])
     # Output node:
-    output_node = pe.Node(interface=niu.IdentityInterface(
-                          fields=['out_img_files']),
+    output_node = pe.Node(interface=niu.IdentityInterface(),
+                          fields=['out_bsi_image', 'out_xor_mask', 'bsi'],
                           name='output_node')
 
     # Node to Copy geometry for mask, roi mask and lesion mask:
@@ -584,9 +910,9 @@ def create_boundary_shift_integral_two_images(lesion_masks=None,
     # Select inputs for signle window
     # Images
     corr_base_im = pe.Node(interface=niu.Select(index=0))
-    workflow.connect(copygeom_bias, 'in_files', corr_base_im, 'inlist')
+    workflow.connect(copygeom_bias, 'out_file', corr_base_im, 'inlist')
     corr_follow_im = pe.Node(interface=niu.Select(index=1))
-    workflow.connect(copygeom_bias, 'in_files', corr_follow_im, 'inlist')
+    workflow.connect(copygeom_bias, 'out_file', corr_follow_im, 'inlist')
     # Binary Masks
     b_mask_bin = pe.Node(interface=niu.Select(index=0))
     workflow.connect(binarize_mask, 'out_file', b_mask_bin, 'inlist')
@@ -668,6 +994,17 @@ def create_boundary_shift_integral_two_images(lesion_masks=None,
             (dest_cpgeom, final_cpgeom, [('out', 'dest_file')])
                          ])
 
+        # Connect:
+        out_bsi_image = pe.Node(interface=niu.Select(index=0))
+        workflow.connect(final_cpgeom, 'out_file', out_bsi_image, 'inlist')
+        out_xor_mask = pe.Node(interface=niu.Select(index=1))
+        workflow.connect(final_cpgeom, 'out_file', out_xor_mask, 'inlist')
+        workflow.connect([
+            (out_bsi_image, output_node, [('out', 'out_bsi_image')]),
+            (out_xor_mask, output_node, [('out', 'out_xor_mask')]),
+            (single_window, output_node, [('out_bsi_values', 'bsi')])
+                         ])
+
     # Double window mode
     else:
         double_window = pe.Node(
@@ -707,6 +1044,16 @@ def create_boundary_shift_integral_two_images(lesion_masks=None,
             (corr_base_im, final_cpgeom, [('out', 'in_file')]),
             (dest_cpgeom, final_cpgeom, [('out', 'dest_file')])
                          ])
+        # connect to output
+        out_bsi_image = pe.Node(interface=niu.Select(index=0))
+        workflow.connect(final_cpgeom, 'out_file', out_bsi_image, 'inlist')
+        out_xor_mask = pe.Node(interface=niu.Select(index=1))
+        workflow.connect(final_cpgeom, 'out_file', out_xor_mask, 'inlist')
+        workflow.connect([
+            (out_bsi_image, output_node, [('out', 'out_bsi_image')]),
+            (out_xor_mask, output_node, [('out', 'out_xor_mask')]),
+            (double_window, output_node, [('out_bsi_values', 'bsi')])
+                         ])
 
     # Stats node:
     stats_node = pe.MapNode(interface=niftyseg.UnaryStats(
@@ -715,31 +1062,160 @@ def create_boundary_shift_integral_two_images(lesion_masks=None,
     workflow.connect(input_stats, 'volume', stats_node, 'in_file')
     # BSI calculation END
 
-    # Write the outputs:
-    # Values to return:
-    """with open(single_window.outputs.out_bsi_values, 'rb') as f:
-        reader = csv.reader(f, delimiter=delimiter)
-        if not header:
-            header = next(reader)
-        for row in reader:
-            if row == header:
-                continue
-        bsi=output.split('DW BSI,')[1]
-	bsi=bsi.split(',')[0]
-	bsi=float(bsi)
-    v1 = float(stats_node.outputs.output)
-    pbvc = - 100 * bsi * 1000 / v1"""
-
     # Generate Report
     # compute volumes:
     stats_report = pe.MapNode(interface=niftyseg.UnaryStats(
                                             operation='V'),
                               name='stats_report')
     workflow.connect(binarize_mask, 'out', stats_report, 'in_file')
-    # generate png
-
     # Generating segmentation overlayed images
+    base_png = generate_seg_png(name='base_png')
+    base_mask = pe.Node(interface=niu.Select(index=0))
+    workflow.connect(output_rm_tissue_node, 'mask_files', base_mask, 'inlist')
+    workflow([
+        (corr_base_im, base_png, [('out', 'in_file')]),
+        (base_mask, base_png, [('out', 'overlay_file')])
+             ])
+    follow_png = generate_seg_png(name='follow_png')
+    follow_mask = pe.Node(interface=niu.Select(index=1))
+    workflow.connect(output_rm_tissue_node, 'mask_files',
+                     follow_mask, 'inlist')
+    workflow([
+        (corr_follow_im, follow_png, [('out', 'in_file')]),
+        (follow_mask, follow_png, [('out', 'overlay_file')])
+             ])
 
+    # Generating segmentation comparation result image
+    mul = pe.MapNode(interface=niftyseg.BinaryMaths(
+                                            operation='mul',
+                                            output_datatype='float'),
+                     iterfield=['in_file', 'operand_file'],
+                     name='mul')
+    workflow.connect([
+        (copygeom_bias, mul, [('out_file', 'in_file')]),
+        (output_rm_tissue_node, mul, [('mask_files', 'operand_file')])
+                     ])
+    # Make segmentation gif file:
+    base_seg_gif = generate_gif(name='base_seg_gif')
+    base_seg = pe.Node(interface=niu.Select(index=0))
+    workflow.connect(mul, 'out_file', base_seg, 'inlist')
+    workflow(base_seg, 'out', base_seg_gif, 'in_file')
+    follow_seg_gif = generate_gif(name='follow_seg_gif')
+    follow_seg = pe.Node(interface=niu.Select(index=1))
+    workflow.connect(mul, 'out_file', follow_seg, 'inlist')
+    workflow.connect(follow_seg, 'out', follow_seg_gif, 'in_file')
+    # append the gif:
+    gif_seg_file = os.path.join(
+            os.path.basename(os.path.abspath(base_seg_gif.outputs.gif_file)),
+            'segmentation.gif')
+    append_pngs([base_seg_gif.outputs.gif_file,
+                 follow_seg_gif.outputs.gif_file], gif_seg_file)
+    # make registration gif file:
+    base_reg_gif = generate_gif(name='base_reg_gif')
+    workflow.connect(corr_base_im, 'out', base_reg_gif, 'in_file')
+    follow_reg_gif = generate_gif(name='follow_reg_gif')
+    workflow.connect(corr_follow_im, 'out', follow_reg_gif, 'in_file')
+    # append the gif:
+    gif_reg_file = os.path.join(
+            os.path.basename(os.path.abspath(base_reg_gif.outputs.gif_file)),
+            'segmentation.gif')
+    append_pngs([base_reg_gif.outputs.gif_file,
+                 follow_reg_gif.outputs.gif_file], gif_reg_file)
+
+    # Xor:
+    xor_png = generate_seg_png(name='xor_png')
+    workflow([
+        (corr_base_im, xor_png, [('out', 'in_file')]),
+        (output_node, xor_png, [('out_xor_mask', 'overlay_file')])
+             ])
+
+    # We separate atrophy and growth in two files
+    # Growth
+    growth_uthr = pe.Node(interface=niftyseg.BinaryMaths(
+                                            operation='uthr'),
+                          name='growth_uthr')
+    growth_uthr.inputs.operand_value = 0
+    workflow.connect(output_node, 'output_bsi_image', growth_uthr, 'in_file')
+    growth_abs = pe.Node(interface=niftyseg.UnaryMaths(
+                                            operation='abs'),
+                         name='growth_abs')
+    workflow.connect(growth_uthr, 'out_file', growth_abs, 'in_file')
+    # Atrophy
+    atrophy_thr = pe.Node(interface=niftyseg.BinaryMaths(
+                                            operation='thr'),
+                          name='atrophy_thr')
+    atrophy_thr.inputs.operand_value = 0
+    workflow.connect(output_node, 'output_bsi_image', atrophy_thr, 'in_file')
+
+    # We compute atrophy and growth separetely
+    # Atrophy is the positive file, because BSI's algorithm measures the
+    # intensity's difference between baseline and follow-up. Roughly:
+    #    BSI=baselineValue-repeatValue.
+    # An intensity decrease between both time points is atrophy and the result
+    # at the end of BSI will be positive
+    # An intensity gain between both time points is grotwh and the result
+    # at the end of BSI will be negative
+
+    # Growth
+    growth_node = pe.Node(interface=niftyseg.UnaryStats(operation='V'),
+                          name='growth_node')
+    workflow.connect(growth_abs, 'out_file', growth_node, 'in_file')
+
+    # Atrophy
+    atrophy_node = pe.Node(interface=niftyseg.UnaryStats(operation='V'),
+                           name='atrophy_node')
+    workflow.connect(atrophy_thr, 'out_file', atrophy_node, 'in_file')
+
+    # Get images:
+    v1 = pe.Node(interface=niu.Select(index=0))
+    workflow.connect(stats_report, 'out_file', v1, 'inlist')
+    v2 = pe.Node(interface=niu.Select(index=1))
+    workflow.connect(stats_report, 'out_file', v2, 'inlist')
+
+    growth = float(growth_node.outputs.output[0]) * 100.0 / v1.outputs.out
+    atrophy = float(atrophy_node.outputs.output[0]) * 100.0 / v1.outputs.out
+
+    # Gif for BSI:
+    bsi_gif = generate_gif(name='bsi_gif')
+    workflow([
+        (corr_base_im, bsi_gif, [('out', 'in_file')]),
+        (growth_abs, bsi_gif, [('out_file', 'overlay_file1')]),
+        (atrophy_thr, bsi_gif, [('out_file', 'overlay_file2')])
+             ])
+
+    # Read the outputs values:
+    with open(output_node.outputs.bsi, 'rb') as f:
+        bsi = f[0]
+    bsi = float(bsi)
+    pbvc = - 100 * bsi * 1000 / v1.outputs.out
+
+    if not patient:
+        patient = os.path.basename(input_node.inputs.in_files[0]).split('.')[0]
+
+    # Set the values for the report html:
+    html = HTML_TEMPLATE.format(
+                patient=patient,
+                cmd='Niftypipe workflow boundary_shift_integral',
+                vol1="{:.0f}".format(v1.outputs.out),
+                vol2="{:.0f}".format(v2.outputs.out),
+                f_b_mask=base_png.outputs.png_file,
+                f_f_mask=follow_png.outputs.png_file,
+                b_mask=base_mask.outputs.out,
+                f_mask=follow_mask.outputs.out,
+                seg=gif_seg_file,
+                reg=gif_reg_file,
+                xor=xor_png.outputs.png_file,
+                bsi=bsi_gif.outputs.gif_file,
+                bsi_val=bsi,
+                pbvc_val=pbvc,
+                atrophy=atrophy,
+                growth=growth)
+
+    html_file = os.path.abspath('index.html')
+
+    # Open a file
+    with open(html_file, "wb") as f_html:
+        f_html.write(html)
     # Generate Report END
 
     return workflow

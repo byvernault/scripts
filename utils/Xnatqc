@@ -108,12 +108,12 @@ class XNATScanQCGUI(ttk.Frame):
         self.quality_var.set(xnat_dict['quality'])
         self.qlabel = ttk.Label(self.lfdata, text=u"Scan quality")
         self.quality = ttk.OptionMenu(self.lfdata, self.quality_var,
-                                      'usable', 'questionable', 'unusable')
+                                      '', 'usable', 'questionable', 'unusable')
         # Notes
         self.notes_var = Tkinter.StringVar()
+        self.notes_var.set(xnat_dict.get('note', ''))
         self.nlabel = ttk.Label(self.lfdata, text=u"Notes:")
         self.notes = ttk.Entry(self.lfdata, textvariable=self.notes_var)
-        self.notes_var.set('')
 
         # buttons
         self.stop = ttk.Button(root, command=self.stop,
@@ -147,9 +147,10 @@ class XNATScanQCGUI(ttk.Frame):
 
     def submit_qc(self):
         """Submit the qc to XNAT."""
-        self.xnat_obj.attrs.mset(
-                {'quality': self.xnat_dict['quality'],
-                 'note': self.quality_var.get()})
+        if self.quality_var.get():
+            self.xnat_obj.attrs.mset(
+                    {'quality': self.quality_var.get(),
+                     'note': self.notes_var.get()})
         self.root.destroy()
 
     def close_window(self):
@@ -201,7 +202,7 @@ class XNATAssessorQCGUI(ttk.Frame):
         self.lfdata = ttk.Labelframe(root, text='Quality Control Form')
         # QC Status
         self.qcstatus_var = Tkinter.StringVar()
-        self.qcstatus_var.set('                ')
+        self.qcstatus_var.set(xnat_dict['qcstatus'])
         self.qlabel = ttk.Label(self.lfdata, text=u"QC Status")
         self.qcstatus = ttk.OptionMenu(self.lfdata, self.qcstatus_var,
                                        '', 'Passed', 'Good', 'OK', 'Poor',
@@ -209,14 +210,14 @@ class XNATAssessorQCGUI(ttk.Frame):
                                        'Needs Edits', 'Bad', 'Failed')
         # Method
         self.method_var = Tkinter.StringVar()
+        self.method_var.set('NiftyMIDAS')
         self.mlabel = ttk.Label(self.lfdata, text=u"Method:")
         self.method = ttk.Entry(self.lfdata, textvariable=self.method_var)
-        self.method_var.set('NiftyMIDAS')
         # Notes
         self.notes_var = Tkinter.StringVar()
+        self.notes_var.set('')
         self.nlabel = ttk.Label(self.lfdata, text=u"Notes:")
         self.notes = ttk.Entry(self.lfdata, textvariable=self.notes_var)
-        self.notes_var.set('')
 
         # buttons
         self.stop = ttk.Button(root, command=self.stop,
@@ -255,12 +256,13 @@ class XNATAssessorQCGUI(ttk.Frame):
         """Submit the qc to XNAT."""
         date = '{:%d-%m-%Y}'.format(datetime.now())
         xsitype = self.xnat_dict['xsiType']
-        self.xnat_obj.attrs.mset(
-                {xsitype+'/validation/status': self.qcstatus_var.get(),
-                 xsitype+'/validation/validated_by': USER,
-                 xsitype+'/validation/date': date,
-                 xsitype+'/validation/notes': self.notes_var.get(),
-                 xsitype+'/validation/method': self.method_var.get()})
+        if self.qcstatus_var.get():
+            self.xnat_obj.attrs.mset(
+                    {xsitype+'/validation/status': self.qcstatus_var.get(),
+                     xsitype+'/validation/validated_by': USER,
+                     xsitype+'/validation/date': date,
+                     xsitype+'/validation/notes': self.notes_var.get(),
+                     xsitype+'/validation/method': self.method_var.get()})
         self.root.destroy()
 
     def close_window(self):
@@ -367,10 +369,11 @@ def get_info_xnat():
         # filter subjects & sessions:
         for field, value in {'subject_label': OPTIONS.subject,
                              'session_label': OPTIONS.session}.items():
-            values = get_option_list(value)
-            if values == 'all':
-                values = None
-            li_objs = filter_list(li_objs, field, value)
+            if value:
+                values = get_option_list(value)
+                if values == 'all':
+                    values = None
+                li_objs = filter_list(li_objs, field, values)
 
         # filter to keep item to QC and only Needs QA for assessor or
         # questionable/usable data for scan if not force
@@ -387,7 +390,7 @@ def get_info_xnat():
     finally:
         xnat.disconnect()
 
-    return li_objs
+    return sorted(li_objs, key=lambda k: k['session_label'])
 
 
 def filter_list(obj_list, field, values, nor=False):
