@@ -266,17 +266,19 @@ def create_upload_demo_csv():
         :return: list of string to write in a csv string for XnatDemographic
     """
     csv_list = list()
-    #Read the xlsx file:
+    # Read the xlsx file:
     info_list = read_excel()
 
-    #subject_l = list()
+    # subject_l = list()
     for sess in XnatUtils.list_sessions(XNAT, 'prion'):
         found, subject_dict = find_subject_date(info_list, sess['subject_label'], sess['date'].replace('-',''), 'Hospital ID')
         if found:
+            print sess['session_label']
             date = get_date(subject_dict['DOB'])
             if 'AOS' in subject_dict.keys():
                 age = subject_dict['AOS']
             else:
+                print subject_dict['Age']
                 age = subject_dict['Age']
             csvstring = CSV_DEMOGRAPHIC.format(project="prion",
                                                subject=sess['subject_label'],

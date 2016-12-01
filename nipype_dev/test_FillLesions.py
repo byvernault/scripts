@@ -42,6 +42,7 @@ if args.bin_mask:
 if args.dil_fill:
     fill_lesions.inputs.in_dilation = int(args.dil_fill)
 
+print fill_lesions.cmdline
 result = fill_lesions.run()
 
 print result.outputs.out_file
