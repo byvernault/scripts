@@ -24,9 +24,9 @@ def parse_args():
     from argparse import ArgumentParser, RawDescriptionHelpFormatter
     argp = ArgumentParser(prog='Rename session', description=__purpose__,
                           formatter_class=RawDescriptionHelpFormatter)
-    argp.add_argument('-o', '--old', dest='old', required=True,
+    argp.add_argument('-o', '--old', dest='old',
                       help='List of sessions to move to new subject.')
-    argp.add_argument('-n', '--new', dest='new', required=True,
+    argp.add_argument('-n', '--new', dest='new',
                       help='New subject.')
     argp.add_argument('-e', '--except', dest='exceptions', default=[],
                       help='Except those sessions.')
@@ -34,33 +34,11 @@ def parse_args():
     return argp.parse_args()
 
 if __name__ == '__main__':
-    xml_file = '/Users/byvernault/20140701_08434709NXRZs006a1001_volumes.xml'
-    """import xml.etree.ElementTree
-    e = xml.etree.ElementTree.parse(xml_file).getroot()
-    print e.attributes()"""
+    args = parse_args()
+    # xnat = XnatUtils.get_interface(host='http://cmic-xnat.cs.ucl.ac.uk')
 
-    from xml.dom import minidom
-    xmldoc = minidom.parse(xml_file)
-    itemlist = xmldoc.getElementsByTagName('item')
-    print(len(itemlist))
-    for s in itemlist:
-        print s
-
-    """args = parse_args()
-    xnat = XnatUtils.get_interface(host='http://cmic-xnat.cs.ucl.ac.uk')
-
-    li_sessions = XnatUtils.list_sessions(xnat, 'prion')
-    li_sessions = filter(lambda x: x['subject_label'] == args.old, li_sessions)
-    for session in li_sessions:
-        if session['label'] not in args.exceptions:
-            session_obj = XnatUtils.get_full_object(xnat, session)
-            if session_obj.exists():
-                date = session['label'].split('_')[1]
-                new_label = '%s_%s' % (args.new, date)
-                print '%s --> %s' % (session['label'], new_label)
-                session_obj.attrs.set('label', new_label)"""
-
-    """li_subjs = XnatUtils.list_subjects(xnat, 'prion')
+    """
+    li_subjs = XnatUtils.list_subjects(xnat, 'prion')
     li_subjs = filter(lambda x: x['subject_label'] == args.old, li_subjs)
     for subject in li_subjs:
         if 'NIFTI' in scan['resources']:
@@ -69,6 +47,5 @@ if __name__ == '__main__':
             if len(resources_file) > 1:
                 print '%s,%s,%s' % (scan['subject_label'],
                                     scan['session_label'],
-                                    scan['ID'])
+                                    scan['ID'])"""
     xnat.disconnect()
-    """

@@ -91,7 +91,7 @@ def ask_user_delete():
     """Ask user to confirm the deletion."""
     answer = ''
     while answer not in ['Y', 'y', 'n', 'N']:
-        answer = raw_input('Do you want to delete all this assessor?(Y/N)\n')
+        answer = raw_input('Do you want to delete all these assessors?(Y/N)\n')
     return answer
 
 

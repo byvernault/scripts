@@ -135,6 +135,5 @@ if __name__ == '__main__':
                 XnatUtils.upload_file_to_obj(
                     brain, assessor_obj.resource('WHOLEBRAIN'), removeall=True)
 
-            raw_input()
     finally:
         XNAT.disconnect()

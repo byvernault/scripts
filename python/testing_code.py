@@ -7,6 +7,7 @@ import glob
 import dicom
 import re
 import dicom.UID
+import subprocess as sb
 from dicom.sequence import Sequence
 from dicom.dataset import Dataset, FileDataset
 # import shutil
@@ -49,35 +50,268 @@ def parse_args():
                       help='Directory to store temp data.')
     argp.add_argument('-s', '--session', dest='sessions', default=None,
                       help='Sessions label on XNAT.')
-
     return argp.parse_args()
 
 
+def dcm2nii(dicom_fpath):
+    """Convert dicom to nifti using dcm2nii.
+
+    :param dicom_fpath: first dicom in the folder
+    :return boolean: true if conversion succeeded, false otherwise
+    """
+    print "   --> convert dcm to nii..."
+    dcm2nii_cmd = '''{dcm2nii} \
+-a n -e n -d n -g y -f n -n y -p n -v y -x n -r n \
+{dicom}'''.format(dcm2nii='dcm2niix', dicom=dicom_fpath)
+    try:
+        sb.check_output(dcm2nii_cmd.split())
+    except sb.CalledProcessError:
+        print "    - warning: dcm to nii conversion failed"
+        return False
+
+    return True
+
+
+def get_dicom_list(directory):
+    """get the list of DICOMs file from the directory.
+
+    :param directory: directory containing the DICOM files.
+    :return list(): list of filepaths that are dicoms in directory
+    """
+    fnames = os.listdir(directory)
+    dicom_paths = list()
+    for fname in fnames:
+        fpath = os.path.join(directory, fname)
+        if is_dicom(fpath):
+            dicom_paths.append(fpath)
+
+    return dicom_paths
+
+
+def check_outputs(nifti_list, bval, bvec):
+    """Check that the outputs are right (opening nifti works).
+
+    :param nifti_list: python list of nifti paths
+    :param bval: python list of bval paths
+    :param bvec: python list of bvec paths
+    :return boolean: true if outputs are fine, false otherwise
+    """
+    for nifti_fpath in nifti_list:
+        try:
+            nib.load(nifti_fpath)
+        except:
+            msg = '''    - warning: {file} is not a proper NIFTI'''
+            print msg.format(file=os.path.basename(nifti_fpath))
+            return False
+    if bval or bvec:
+        if not os.path.isfile(bval) or not os.path.isfile(bvec):
+            print "    - warning: no bval/bvec generated (DTI scan)"
+            return False
+
+    return True
+
+
+def is_dicom(fpath):
+    """check if the file is a DICOM medical data.
+
+    :param fpath: path of the file
+    :return boolean: true if it's a DICOM, false otherwise
+    """
+    file_call = '''file {fpath}'''.format(fpath=fpath)
+    output = sb.check_output(file_call.split())
+    if 'dicom' in output.lower():
+        return True
+
+    return False
+
+
+def upload_converted_images(dicom_files, dcm_dir, scan_obj):
+    """Upload the images after checking them.
+
+    :param dicom_files: list of dicoms files to zip
+    :param dcm_dir: directory containing the dicoms
+    :param scan_obj: scan pyxnat object from XNAT
+    """
+    # Local variables
+    nifti_list = []
+    bval_fpath = ''
+    bvec_fpath = ''
+
+    # Get the bvec/bval files and NIFTI from the folder:
+    for fpath in glob.glob(os.path.join(dcm_dir, '*')):
+        if os.path.isfile(fpath):
+            if fpath.lower().endswith('.bval'):
+                bval_fpath = fpath
+            if fpath.lower().endswith('.bvec'):
+                bvec_fpath = fpath
+            if fpath.lower().endswith('.nii.gz'):
+                nifti_list.append(fpath)
+            if fpath.lower().endswith('.nii'):
+                os.system('gzip '+fpath)
+                nifti_list.append(fpath+'.gz')
+
+    # Check NIFTI:
+    good_to_upload = check_outputs(nifti_list, bval_fpath, bvec_fpath)
+    # Upload files:
+    if good_to_upload:
+        if os.path.isfile(bval_fpath) and os.path.isfile(bvec_fpath):
+            # BVAL/BVEC
+            XnatUtils.upload_file_to_obj(bval_fpath,
+                                         scan_obj.resource('BVAL'),
+                                         remove=True)
+            XnatUtils.upload_file_to_obj(bvec_fpath,
+                                         scan_obj.resource('BVEC'),
+                                         remove=True)
+            # keep the NII with the same name than the BVAL/BVEC
+            nifti_list = filter(lambda x: x[:-7] == bval_fpath[:-5],
+                                nifti_list)
+            XnatUtils.upload_files_to_obj(nifti_list,
+                                          scan_obj.resource('NIFTI'),
+                                          remove=True)
+        else:
+            # NII
+            XnatUtils.upload_files_to_obj(nifti_list,
+                                          scan_obj.resource('NIFTI'),
+                                          remove=True)
+
+        # ZIP the DICOM if more than one
+        if len(dicom_files) > 1:
+            # Remove the files created before zipping:
+            for nii_file in nifti_list:
+                os.remove(nii_file)
+            if os.path.isfile(bval_fpath) and os.path.isfile(bvec_fpath):
+                os.remove(bval_fpath)
+                os.remove(bvec_fpath)
+            print '   --> more than one dicom file, zipping dicoms.'
+            zip_path = os.path.join(dcm_dir, 'dicoms.zip')
+            zip_files = glob.glob(os.path.join(dcm_dir, '*'))
+            zip_list(zip_files, zip_path)
+
+        # more than one NIFTI uploaded
+        if len(nifti_list) > 1:
+            print "    - warning: more than one NIFTI upload"
+
+
+def dcmdjpeg(dcm_dir):
+    """Converting the dicom to jpeg dicoms.
+
+    :param dcm_dir: directory containing the dicoms
+    """
+    print "   --> run dcmdjpeg on the DICOMs to convert \
+JPEG DICOM to regular DICOM."
+    for number, dicoms in enumerate(os.listdir(dcm_dir)):
+        msg = '''{dcmdjpeg} {original_dcm} {new_dcm}'''
+        new_dcm = 'final_'+str(number)+'.dcm'
+        dcmdjpeg_cmd = msg.format(dcmdjpeg='dcmdjpeg',
+                                  original_dcm=os.path.join(dcm_dir, dicoms),
+                                  new_dcm=os.path.join(dcm_dir, new_dcm))
+        os.system(dcmdjpeg_cmd)
+        os.remove(os.path.join(dcm_dir, dicoms))
+
+
+def zip_list(li_files, zip_path, subdir=False):
+    """Zip all the files in the list into a zip file.
+
+    :param li_files: python list of files for the zip
+    :param zip_path: zip path
+    :param subdir: copy the subdirectories as well. Default: False.
+    """
+    import zipfile
+    if not zip_path.lower().endswith('.zip'):
+        zip_path = '%s.zip' % zip_path
+    with zipfile.ZipFile(zip_path, 'w') as myzip:
+        for fi in li_files:
+            if subdir:
+                myzip.write(fi, compress_type=zipfile.ZIP_DEFLATED)
+            else:
+                myzip.write(fi, arcname=os.path.basename(fi),
+                            compress_type=zipfile.ZIP_DEFLATED)
+
+
 if __name__ == '__main__':
-    from pyxnat.core.uriutil import uri_parent
-    from pyxnat.core.jsonutil import JsonTable
-    import difflib
+    OPTIONS = parse_args()
+    directory = XnatUtils.makedir(OPTIONS.directory)
+    type_scans = ['fl3d-cor_bh_15fadynamic', 'fl3d-cor_bh_15fa_dynamic_50meas',
+                  'fl3d-cor_15fa_dynamic_50meas', 'fl3d-cor_bh_15fadynamic']
 
-    args = parse_args()
+    XNAT = XnatUtils.get_interface(host='https://prostate-xnat.cs.ucl.ac.uk')
 
-    xnat = XnatUtils.get_interface(host='http://cmic-xnat.cs.ucl.ac.uk')
+    list_scans = XnatUtils.list_project_scans(XNAT, OPTIONS.project)
+    if OPTIONS.sessions:
+        list_scans = filter(
+            lambda x: x['session_label'] in OPTIONS.sessions.split(','),
+            list_scans)
+    list_scans = filter(lambda x: 'NIFTI' not in x['resources'], list_scans)
+    number_scans = len(list_scans)
+    print "Converting the %s scans found." % (number_scans)
+    for index, scan in enumerate(sorted(list_scans,
+                                        key=lambda k: k['session_label'])):
+        message = ' * {index}/{total} -- Session: {session} -- Scan: {scan}'
+        print message.format(index=index+1,
+                             total=number_scans,
+                             session=scan['session_label'],
+                             scan=scan['ID'])
+        if scan['type'] in type_scans:
+            scan_obj = XnatUtils.get_full_object(XNAT, scan)
+            if scan_obj.exists() and \
+               len(scan_obj.resource('DICOM').files().get()) > 0:
+                print "   --> downloading DICOM ..."
+                tmp_dir = os.path.join(directory, scan['session_label'],
+                                       scan['ID'])
+                os.makedirs(tmp_dir)
+                fpaths = XnatUtils.download_files_from_obj(
+                            tmp_dir,
+                            scan_obj.resource("DICOM"))
+                if not fpaths:
+                    print '    - warning: DICOM -- no files.'
+                else:
+                    dcm_dir = os.path.join(tmp_dir, 'DICOM')
+                    if len(fpaths) == 1 and fpaths[0].endswith('.zip'):
+                        if not os.path.exists(dcm_dir):
+                            os.makedirs(dcm_dir)
+                        os.system('unzip -d %s -j %s > /dev/null'
+                                  % (dcm_dir, fpaths[0]))
+                        os.remove(fpaths[0])
+                    dicom_files = get_dicom_list(dcm_dir)
+
+                    if dicom_files:
+                        # convert dcm to nii
+                        conversion_status = dcm2nii(dicom_files[0])
+
+                        if not conversion_status:
+                            # Convert dcm via dcmdjpeg
+                            dcmdjpeg(dcm_dir)
+                            # try again dcm2nii
+                            dcm_fpath = os.path.join(dcm_dir, 'final_1.dcm')
+                            conversion_status = dcm2nii(dcm_fpath)
+
+                        # Check if Nifti created:
+                        nii_li = [f for f in os.listdir(dcm_dir)
+                                  if f.endswith('.nii.gz') or f.endswith('.nii')]
+                        if not nii_li:
+                            print "    - warning: dcm to nii failed with \
+conversion dcmjpeg. no upload."
+                        else:
+                            # UPLOADING THE RESULTS
+                            upload_converted_images(dicom_files, dcm_dir,
+                                                    scan_obj)
+
+                        # clean tmp folder
+                        # XnatUtils.clean_directory(directory)
+                    else:
+                        print "    - ERROR : no proper DICOM files \
+found from the resource on XNAT. "
+
+            else:
+                print "    - ERROR : issue with resource DICOM: \
+no files or resource. "
+
+    XNAT.disconnect()
+
+    """xnat = XnatUtils.get_interface(host='http://cmic-xnat.cs.ucl.ac.uk')
     li_sessions = XnatUtils.list_sessions(xnat, 'prion')
     for session in li_sessions:
         sess = XnatUtils.get_full_object(xnat, session)
-        """path = 'xnat:mrsessiondata/fields/field\
-[name=geneticstate]/field'
-        query_str = '?columns=ID,%s' % path
-        get_uri = uri_parent(sess.attrs._eobj._uri) + query_str
-        print get_uri
-        jdata = JsonTable(sess.attrs._intf._get_json(get_uri)
-                          ).where(ID=sess.attrs._get_id())
-        print jdata
-
-        print jdata.headers()
-
-        header = difflib.get_close_matches(path.split('/')[-1],
-                                           jdata.headers())
-        print header"""
         geneticstate = sess.xpath("/xnat:MRSession/xnat:fields/xnat:\
 field[@name='geneticstate']/text()[2]")
         if not geneticstate:
@@ -98,7 +332,7 @@ field[@name='mrc']/text()[2]")
         # if not geneticstate:
         #    print session['label']
 
-    """csv_file = '/Users/byvernault/data/files/Prion_info.csv'
+    csv_file = '/Users/byvernault/data/files/Prion_info.csv'
     csv_info = Ben_functions.read_csv(csv_file)
     csv_info = sorted(csv_info, key=lambda k: k['session'])
     di = dict()

@@ -1,5 +1,5 @@
 """Testing processors written by users."""
 
-from Processor_Compute_ADC_Verdict import Processor_Compute_ADC_Verdict
+from Processor_ADC_MAP import Processor_ADC_MAP
 
-test_obj = Processor_Compute_ADC_Verdict()
+test_obj = Processor_ADC_MAP()

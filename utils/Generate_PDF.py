@@ -11,9 +11,9 @@ import glob
 import shutil
 import getpass
 from dax import XnatUtils
-from Spider_GIF_Parcellation_v2_0_0 import Spider_GIF_Parcellation
+# from Spider_GIF_Parcellation_v2_0_0 import Spider_GIF_Parcellation
 # from Spider_GIF_Parcellation_v1_0_0 import Spider_GIF_Parcellation
-
+from Spider_Verdict_v1_0_1 import Spider_Verdict, NII2DICOM
 
 __author__ = 'byvernault'
 __email__ = 'b.yvernault@ucl.ac.uk'
@@ -24,14 +24,18 @@ __modifications__ = '25 November 2016 - Original write'
 STATS_EXT = '*.xml'
 # STATS_EXT = '*.csv'
 
+# RESOURCES = [
+#     'BIAS_COR',
+#     'BRAIN',
+#     'LABELS',
+#     'PRIOR',
+#     'SEG',
+#     'TIV',
+#     'STATS'
+# ]
 RESOURCES = [
-    'BIAS_COR',
-    'BRAIN',
-    'LABELS',
-    'PRIOR',
-    'SEG',
-    'TIV',
-    'STATS'
+    'RMAPS1',
+    'RMAPS2'
 ]
 
 labels = {
@@ -74,41 +78,124 @@ def parse_args():
 def generate_pdf(spider_path, assessor_obj, assessor, tmpdir):
     """ Generating the PDF from the outputs and spider code."""
     jobsdir = os.path.join(tmpdir, assessor['label'])
-    if not os.path.exists(jobsdir):
-        os.makedirs(jobsdir)
-    else:
-        shutil.rmtree(jobsdir)
-        os.makedirs(jobsdir)
-    spider = Spider_GIF_Parcellation(spider_path=spider_path,
-                                     jobdir=jobsdir,
-                                     xnat_project=assessor['project_id'],
-                                     xnat_subject=assessor['subject_label'],
-                                     xnat_session=assessor['session_label'],
-                                     xnat_scan=None,
-                                     xnat_host=None,
-                                     xnat_user=None,
-                                     xnat_pass=None,
-                                     number_core='',
-                                     suffix='')
+    # spider = Spider_GIF_Parcellation(spider_path=spider_path,
+    spider = Spider_Verdict(
+                     spider_path=spider_path,
+                     jobdir=jobsdir,
+                     xnat_project=assessor['project_id'],
+                     xnat_subject=assessor['subject_label'],
+                     xnat_session=assessor['session_label'],
+                     proctype='Registration_Verdict_v1',
+                     nb_acquisition=1,
+                     matlab_code="/Users/byvernault/home-local/code/matlab",
+                     amico=None,
+                     camino=None,
+                     spams=None,
+                     scheme_filename=None,
+                     xnat_host=None,
+                     xnat_user=None,
+                     xnat_pass=None,
+                     suffix='')
 
     # Download the outputs form XNAT:
-    outputs_dir = os.path.join(jobsdir, 'outputs')
+    outputs_dir = os.path.join(spider.jobdir, 'outputs')
     if not os.path.exists(outputs_dir):
         os.makedirs(outputs_dir)
     for resource in RESOURCES:
-        XnatUtils.download_files_from_obj(
-                    outputs_dir, assessor_obj.resource(resource))
-    # move niftis to outputs folder:
-    niftis = glob.glob(os.path.join(outputs_dir, '*', '*.nii.gz'))
-    stats = glob.glob(os.path.join(outputs_dir, '*', STATS_EXT))
-    for nifti in niftis+stats:
-        shutil.move(nifti, outputs_dir)
+        if assessor_obj.resource(resource).exists():
+            XnatUtils.download_files_from_obj(
+                        outputs_dir, assessor_obj.resource(resource))
+
+    acq1 = os.path.join(outputs_dir, '1/AMICO/VerdictProstate_Rmaps/')
+    acq2 = None
+    os.makedirs(acq1)
+    nifti1 = glob.glob(os.path.join(outputs_dir, 'RMAPS1', '*.nii.gz'))
+    for nifti in nifti1:
+        shutil.move(nifti, acq1)
+    if assessor_obj.resource('ACQ2').exists():
+        spider.acquisition = 2
+        acq2 = os.path.join(outputs_dir, '2/AMICO/VerdictProstate_Rmaps/')
+        os.makedirs(acq2)
+        nifti2 = glob.glob(os.path.join(outputs_dir, 'RMAPS2', '*.nii.gz'))
+        for nifti in nifti2:
+            shutil.move(nifti, acq2)
+
+    # Gzip:
+    XnatUtils.ungzip_nii(acq1)
+    if acq2:
+        XnatUtils.ungzip_nii(acq2)
+
+    # Call function
     spider.make_pdf()
 
     return spider.pdf_final
 
+
+def generate_dicoms(spider_path, assessor_obj, assessor, tmpdir):
+    jobsdir = os.path.join(tmpdir, assessor['label'])
+    # spider = Spider_GIF_Parcellation(spider_path=spider_path,
+    spider = Spider_Verdict(
+                     spider_path=spider_path,
+                     jobdir=jobsdir,
+                     xnat_project=assessor['project_id'],
+                     xnat_subject=assessor['subject_label'],
+                     xnat_session=assessor['session_label'],
+                     proctype='Registration_Verdict_v1',
+                     nb_acquisition=1,
+                     matlab_code="/Users/byvernault/home-local/code/matlab",
+                     amico=None,
+                     camino=None,
+                     spams=None,
+                     scheme_filename=None,
+                     xnat_host=None,
+                     xnat_user=None,
+                     xnat_pass=None,
+                     suffix='')
+
+    spider.pre_run()
+    # Download the outputs form XNAT:
+    outputs_dir = os.path.join(spider.jobdir, 'outputs')
+    if not os.path.exists(outputs_dir):
+        os.makedirs(outputs_dir)
+    for resource in RESOURCES:
+        if assessor_obj.resource(resource).exists():
+            XnatUtils.download_files_from_obj(
+                        outputs_dir, assessor_obj.resource(resource))
+    osirix_folder = XnatUtils.makedir(os.path.join(outputs_dir, 'OsiriX'))
+
+    acq1 = os.path.join(outputs_dir, '1/AMICO/VerdictProstate_Rmaps/')
+    acq2 = None
+    os.makedirs(acq1)
+    nifti1 = glob.glob(os.path.join(outputs_dir, 'RMAPS1', '*.nii.gz'))
+    for nifti in nifti1:
+        shutil.move(nifti, acq1)
+    if assessor_obj.resource('ACQ2').exists():
+        spider.acquisition = 2
+        acq2 = os.path.join(outputs_dir, '2/AMICO/VerdictProstate_Rmaps/')
+        os.makedirs(acq2)
+        nifti2 = glob.glob(os.path.join(outputs_dir, 'RMAPS2', '*.nii.gz'))
+        for nifti in nifti2:
+            shutil.move(nifti, acq2)
+
+    for nb_acq in range(1, spider.nb_acquisition+1):
+        # Convert all niftis to dicoms
+        mat_lines = NII2DICOM.format(
+                matlab_code=spider.matlab_code,
+                maps_folder=os.path.join(outputs_dir, str(nb_acq),
+                                         'AMICO', 'VerdictProstate_Rmaps'),
+                dicom_file=spider.inputs['dcm'],
+                out_folder=osirix_folder,
+                acq=str(nb_acq))
+        nii2dcm_script = os.path.join(outputs_dir, 'run_nii2dcm_%d.m' % nb_acq)
+        with open(nii2dcm_script, "w") as f:
+            f.writelines(mat_lines)
+        XnatUtils.run_matlab(nii2dcm_script, verbose=True)
+    raw_input('...')
+
+
 if __name__ == '__main__':
     ARGS = parse_args()
+
     try:
         if ARGS.host:
             HOST = ARGS.host
@@ -143,7 +230,8 @@ if __name__ == '__main__':
         li_assessors = XnatUtils.filter_list_dicts_regex(
                                 li_assessors, 'procstatus',
                                 ['COMPLETE'])
-        li_assessors = sorted(li_assessors, key=lambda k: k['session_label'])
+        li_assessors = sorted(li_assessors,
+                              key=lambda k: k['session_label'])
         start = False
         for assessor in li_assessors:
             if ARGS.session:
@@ -154,9 +242,11 @@ if __name__ == '__main__':
             if start:
                 print 'Assessor: %s' % assessor['label']
                 assessor_obj = XnatUtils.get_full_object(XNAT, assessor)
-                pdf = generate_pdf(ARGS.spider_path, assessor_obj, assessor,
-                                   ARGS.tmpdir)
-                XnatUtils.upload_file_to_obj(pdf, assessor_obj.resource('PDF'),
-                                             removeall=True)
+                # pdf = generate_pdf(ARGS.spider_path, assessor_obj,
+                #                    assessor, ARGS.tmpdir)
+                # XnatUtils.upload_file_to_obj(
+                #     pdf, assessor_obj.resource('PDF'), removeall=True)
+                generate_dicoms(ARGS.spider_path, assessor_obj,
+                                assessor, ARGS.tmpdir)
     finally:
         XNAT.disconnect()

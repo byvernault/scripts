@@ -38,6 +38,8 @@ def parse_args():
                       default=None)
     argp.add_argument('-d', '--tmpdir', dest='tmpdir', required=True,
                       help='Path for tmp data.')
+    argp.add_argument('-se', '--sess', dest='session', required=True,
+                      help='Last session to start from.')
     return argp.parse_args()
 
 
@@ -116,12 +118,19 @@ if __name__ == '__main__':
         li_assessors = XnatUtils.filter_list_dicts_regex(
                             li_assessors, 'procstatus', ['COMPLETE'])
         li_assessors = sorted(li_assessors, key=lambda k: k['session_label'])
+        start = False
         for assessor in li_assessors:
-            print 'Assessor: %s' % assessor['label']
-            assessor_obj = XnatUtils.get_full_object(XNAT, assessor)
-            original, preview = generate_snapshots(assessor_obj,
-                                                   assessor,
-                                                   ARGS.tmpdir)
-            upload_snapshots(assessor_obj, original, preview)
+            if ARGS.session:
+                if assessor['session_label'] == ARGS.session:
+                    start = True
+            else:
+                start = True
+            if start:
+                print 'Assessor: %s' % assessor['label']
+                assessor_obj = XnatUtils.get_full_object(XNAT, assessor)
+                original, preview = generate_snapshots(assessor_obj,
+                                                       assessor,
+                                                       ARGS.tmpdir)
+                upload_snapshots(assessor_obj, original, preview)
     finally:
         XNAT.disconnect()
