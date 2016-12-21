@@ -53,12 +53,12 @@ def sessions_delete():
     """Delete sessions on XNAT."""
     for session in LI_SESSIONS:
         print ' - deleting session: %s' % session['label']
-        # session_obj = XnatUtils.get_full_object(XNAT, session)
-        # if session_obj.exists():
-        #     try:
-        #         session_obj.delete()
-        #     except:
-        #         print "exception but let's continue"
+        session_obj = XnatUtils.get_full_object(XNAT, session)
+        if session_obj.exists():
+            try:
+                session_obj.delete()
+            except:
+                print "exception but let's continue"
 
 
 if __name__ == '__main__':
