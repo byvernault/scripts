@@ -228,8 +228,7 @@ def upload_converted_images(dicom_files, dcm_dir, scan_obj):
                                           remove=True)
 
         # ZIP the DICOM if more than one
-        if len(dicom_files) > 1 and OPTIONS.zip_dicoms and \
-           len(dicom_files) < 900:
+        if len(dicom_files) > 1 and OPTIONS.zip_dicoms:
             # Remove the files created before zipping:
             for nii_file in nifti_list:
                 os.remove(nii_file)
@@ -323,8 +322,8 @@ def convert_DICOM():
                 if len(fpaths) == 1 and fpaths[0].endswith('.zip'):
                     if not os.path.exists(dcm_dir):
                         os.makedirs(dcm_dir)
-                    os.system('unzip -d %s -j %s > /dev/null'
-                              % (dcm_dir, fpaths[0]))
+                    os.system('unzip -d %s -j %s > /dev/null' % (dcm_dir,
+                                                                 fpaths[0]))
                     os.remove(fpaths[0])
                 dicom_files = get_dicom_list(dcm_dir)
 
@@ -350,8 +349,7 @@ def convert_DICOM():
 conversion dcmjpeg. no upload."
                     else:
                         # UPLOADING THE RESULTS
-                        upload_converted_images(dicom_files, dcm_dir,
-                                                scan_obj)
+                        upload_converted_images(dicom_files, dcm_dir, scan_obj)
 
                     # clean tmp folder
                     XnatUtils.clean_directory(OPTIONS.directory)

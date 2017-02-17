@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Download outlog for Assessors that failed from a project on XNAT.
+
+Created on Jan 13, 2017.
+
+@author: Benjamin Yvernault
+"""
+
+import os
+import getpass
+from dax import XnatUtils, task
+
+
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "Download outlog for Assessors that failed from a project."
+__version__ = '1.0.0'
+__modifications__ = """Created on Jan 12, 2017"""
+
+
+def parse_args():
+    """Parser for arguments."""
+    from argparse import ArgumentParser
+    argp = ArgumentParser(prog='XnatdlLogs', description=__purpose__)
+    argp.add_argument("-p", "--project", dest="project", required=True,
+                      help="Project ID on XNAT or list of Project ID")
+    argp.add_argument(
+        "-t", "--types", dest="proctype", required=True,
+        help="Process type you want to download logs from in the project.")
+    argp.add_argument(
+            '-d', '--dir', dest='temp_dir', default=None,
+            help='Temp Directory to store logs. Default: current dir.')
+    argp.add_argument('--host', dest='host', default=None,
+                      help='Host for XNAT. Default: using $XNAT_HOST.')
+    argp.add_argument('-u', '--username', dest='username', default=None,
+                      help='Username for XNAT. Default: using $XNAT_USER.')
+    return argp.parse_args()
+
+
+def get_assessor_list():
+    """Get list of assessors filtered from XNAT."""
+    li_assessors = list()
+    li_assessors = XnatUtils.list_project_assessors(XNAT, ARGS.project)
+    li_assessors = XnatUtils.filter_list_dicts_regex(
+                        li_assessors, 'proctype', ARGS.proctype.split(','))
+    li_assessors = XnatUtils.filter_list_dicts_regex(
+                        li_assessors, 'procstatus', [task.JOB_FAILED])
+    return li_assessors
+
+
+def dl_outlogs():
+    """Download Outlogs form assessors list."""
+    for assessor in LI_ASSESSORS:
+        if 'OUTLOG' in assessor['resources']:
+            print ' - downloading log for %s' % assessor['label']
+            assessor_obj = XnatUtils.get_full_object(XNAT, assessor)
+            asse_dir = os.path.join(ARGS.temp_dir, assessor['label'])
+            if not os.path.exists(asse_dir):
+                os.makedirs(asse_dir)
+            XnatUtils.download_file_from_obj(
+                    asse_dir, assessor_obj.resource('OUTLOG'))
+        else:
+            print ('Warning: Assessor %s does not have any OUTLOG.'
+                   % assessor['label'])
+
+
+if __name__ == '__main__':
+    ARGS = parse_args()
+
+    try:
+        if ARGS.host:
+            HOST = ARGS.host
+        else:
+            HOST = os.environ['XNAT_HOST']
+        if ARGS.username:
+            MSG = "Please provide the password for user <%s> \
+on xnat(%s):" % (ARGS.username, HOST)
+            PWD = getpass.getpass(prompt=MSG)
+        else:
+            PWD = None
+
+        print 'INFO: connection to xnat <%s>:' % (HOST)
+        XNAT = XnatUtils.get_interface(host=ARGS.host,
+                                       user=ARGS.username,
+                                       pwd=PWD)
+        LI_ASSESSORS = get_assessor_list()
+        if not len(LI_ASSESSORS) > 0:
+            print 'INFO: No assessor found. Exit.'
+        else:
+            print 'INFO: '+str(len(LI_ASSESSORS))+' assessors found.'
+            # Download outlogs:
+            dl_outlogs()
+
+    finally:
+        XNAT.disconnect()
+        # Display:
+        print '=====================================================\n'

@@ -7,6 +7,7 @@ import os
 import sys
 from dax import XnatUtils
 
+
 ASSESSOR_TYPE = 'GIF_Parcellation_v1'
 HOST = 'http://cmic-xnat.cs.ucl.ac.uk'
 PROJECT = 'Prisma_upgrade'

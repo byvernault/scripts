@@ -128,46 +128,46 @@ if __name__ == '__main__':
     edit_info_dicom(scan_list)
     """
 
-    xnat = XnatUtils.get_interface()
-    # Scans list
-    set_patient_comment = True
-    list_subject = ['INN-079-JZA_20160914', 'INN-078-AHA_20160909',
-                    'INN-077-ASI_Prostatectomy_20160906',
-                    'INN-074-GMC_IN_20160830', 'INN-077-ASI_20160906']
-    scan_list = XnatUtils.list_project_scans(xnat, OPTIONS.project)
-    scan_list = filter(lambda x: x['session_label'] in list_subject,
-                       scan_list)
-    for sc in scan_list:
-        print "dicoms for session %s / scan %s " % (sc['session_label'],
-                                                    sc['ID'])
+    with XnatUtils.get_interface() as xnat:
+        # Scans list
+        set_patient_comment = True
+        list_subject = ['INN-047-FCO']
+        scan_list = XnatUtils.list_project_scans(xnat, OPTIONS.project)
+        scan_list = filter(lambda x: x['subject_label'] in list_subject,
+                           scan_list)
+        for sc in scan_list:
+            print "dicoms for session %s / scan %s " % (sc['session_label'],
+                                                        sc['ID'])
 
-        res_obj = XnatUtils.get_full_object(xnat, sc).resource('DICOM')
-        if not res_obj.exists():
-            continue
-        tmpdir = os.path.join(os.path.abspath(
-                                OPTIONS.directory),
-                              sc['session_label'],
-                              sc['ID'])
-        if not os.path.exists(tmpdir):
-            os.makedirs(tmpdir)
-        else:
-            print '  skip it. already processed.'
-            continue
+            res_obj = XnatUtils.get_full_object(xnat, sc).resource('DICOM')
+            if not res_obj.exists():
+                continue
+            tmpdir = os.path.join(os.path.abspath(
+                                    OPTIONS.directory),
+                                  sc['session_label'],
+                                  sc['ID'])
+            if not os.path.exists(tmpdir):
+                os.makedirs(tmpdir)
+            else:
+                print '  skip it. already processed.'
+                continue
 
-        dicom_file = XnatUtils.download_file_from_obj(directory=tmpdir,
-                                                      resource_obj=res_obj)
-        # for dicom_path in dicom_files:
-        print "   file: %s " % dicom_file
-        dcm = dicom.read_file(dicom_file)
-        # edit the header
-        dcm.PatientName = sc['subject_label']
-        dcm.PatientID = sc['session_label']
-        if set_patient_comment:
-            dcm.PatientComments = 'Project:%s;Subject:%s;Session:%s' \
-                % (sc['project_id'], sc['subject_label'], sc['session_label'])
-        dcm.SeriesDescription = sc['series_description']
-        dcm.save_as(dicom_file)
-        XnatUtils.upload_file_to_obj(dicom_file, res_obj, remove=True)
-        print "------"
+            dicom_file = XnatUtils.download_file_from_obj(directory=tmpdir,
+                                                          resource_obj=res_obj)
+            # for dicom_path in dicom_files:
+            print "   file: %s " % dicom_file
+            dcm = dicom.read_file(dicom_file)
+            # edit the header
+            dcm.PatientName = sc['subject_label']
+            dcm.PatientID = sc['session_label']
+            if set_patient_comment:
+                temp = 'Project:%s;Subject:%s;Session:%s'
+                dcm.PatientComments = temp % (sc['project_id'],
+                                              sc['subject_label'],
+                                              sc['session_label'])
+            # dcm.SeriesDescription = sc['series_description']
+            dcm.save_as(dicom_file)
+            XnatUtils.upload_file_to_obj(dicom_file, res_obj, remove=True)
+            print "------"
     print "DICOMs read and edited."
     print '==================================================================='
