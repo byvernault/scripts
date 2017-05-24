@@ -1,0 +1,494 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import dicom
+import logging
+import os
+import ScrolledText
+import sys
+import subprocess as sb
+import tkFileDialog
+import Tkinter
+import ttk
+
+
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = "Anonymise DICOM header for XNAT."
+__version__ = '1.0.0'
+__modifications__ = '13 February 2017 - Original write'
+
+# Variables
+DEFAULT_HOST = 'https://prostate-xnat.cs.ucl.ac.uk'
+DEFAULT_EXE = 'DicomRemap'
+COMMENT_TMP = """Project:{project};Subject:{subject};Session:{session}"""
+REMOVE_BY_DEFAULT_NAME = ('InstitutionAddress',
+                          'PatientSex',
+                          'PatientAge',
+                          'PatientAddress',
+                          'MilitaryRank',
+                          'Allergies',
+                          'AdditionalPatientHistory',
+                          'OtherPatientIDs',
+                          'PerformingPhysicianName',
+                          'OperatorsName',
+                          'ReferringPhysicianName',
+                          'StudyDate',
+                          'StudyDescription',
+                          'AcquisitionDate',
+                          'AcquisitionNumber',
+                          'ContentDate',
+                          'AcquisitionDateTime',
+                          'ContentTime',
+                          'SeriesTime',
+                          'AcquisitionTime',
+                          'AccessionNumber',
+                          'StationName',
+                          'StudyID',
+                          'RequestingService',
+                          'RequestingPhysician',
+                          'StudyComments',
+                          'PrivateCreatorDataElement',
+                          'RequestedProcedureDescription',
+                          'CurrentPatientLocation',
+                          'ScanningSequence',
+                          'SequenceVariant',
+                          'ScanOptions')
+
+REMOVE_BY_DEFAULT_TAG = [0x00081048,  # Physician(s) Of Record
+                         0x00081040,  # Institutional Department Name
+                         0x00081060,  # Name of Physician(s) Reading Study
+                         0x0032000A,  # Study Status ID
+                         0x0032000C,  # Study Priority ID
+                         0x00321030,  # Reason for Study
+                         0x00400241,  # Performed Station AE Title
+                         0x00400253,  # Performed Procedure Step ID
+                         0x00401001,  # Requested Procedure ID
+                         0x00400254]  # Performed Procedure Step Description
+
+
+class WidgetLogger(logging.Handler):
+    def __init__(self, widget):
+        logging.Handler.__init__(self)
+        self.setLevel(logging.INFO)
+        self.widget = widget
+        self.widget.config(state='disabled')
+
+    def emit(self, record):
+        self.widget.config(state='normal')
+        # Append message (record) to the widget
+        self.widget.insert(Tkinter.END, self.format(record))
+        self.widget.see(Tkinter.END)  # Scroll to the bottom
+        self.widget.config(state='disabled')
+
+    def clear(self):
+        self.widget.config(state='normal')
+        self.widget.delete('1.0', Tkinter.END)
+        self.widget.config(state='disabled')
+
+
+class XNATDicomAnonymise(ttk.Frame):
+    """GUI for anonymizing dicoms."""
+    def __init__(self, parent):
+        """Init method."""
+        # variables:
+        self.previous_dir = os.environ.get("HOME")
+        self.out_dir = None
+        # self.out_dir = os.path.join(os.environ.get("HOME"), 'ano')
+
+        # GUI
+        ttk.Frame.__init__(self, parent, width=800, height=1000)
+        self.parent = parent
+        self.initialize()
+
+    def initialize(self):
+        """ Initialize the window """
+        # text labels
+        self.label = ttk.Label(
+            self.parent, text=u"DAX Dicom Anonymisation Tool",
+            font=("Helvetica", 26))
+
+        self.dicoms = ttk.Labelframe(self.parent, text='Dicom Information')
+        self.dcm_dir = Tkinter.StringVar()
+        self.dcm_label = ttk.Label(self.dicoms, text=u"Dicom Directory:")
+        self.dcm_entry = ttk.Entry(self.dicoms, textvariable=self.dcm_dir,
+                                   width=40)
+        # Select folder:
+        self.find = ttk.Button(self.dicoms, text='Find Dicoms',
+                               command=self.askdirectory)
+
+        # Frame label for QC status form
+        self.lfdata = ttk.Labelframe(
+            self.parent, text='XNAT information for patient to upload')
+        # QC Status
+        self.project_var = Tkinter.StringVar()
+        self.plabel = ttk.Label(self.lfdata, text=u"XNAT Project")
+        self.project = ttk.Entry(self.lfdata, textvariable=self.project_var,
+                                 width=40)
+
+        # Notes
+        self.subject_var = Tkinter.StringVar()
+        self.slabel = ttk.Label(self.lfdata, text=u"XNAT Subject:")
+        self.subject = ttk.Entry(self.lfdata, textvariable=self.subject_var,
+                                 width=40)
+
+        # Comment:
+        self.comments_var = Tkinter.StringVar()
+        self.nlabel = ttk.Label(self.lfdata, text=u"Suffix for Subject:")
+        self.comments = ttk.Entry(self.lfdata, textvariable=self.comments_var,
+                                  width=40)
+
+        # buttons
+        self.actions = ttk.Labelframe(self.parent)
+        self.stop = ttk.Button(self.actions, command=self.stop,
+                               text='Close')
+        self.anonymise = ttk.Button(self.actions, command=self.anonymise_dicom,
+                                    text='Anonymize')
+
+        # Add text widget to display logging info
+        self.logs = ttk.Labelframe(self.parent)
+        self.scrollt = ScrolledText.ScrolledText(self.logs, state='disabled')
+        self.scrollt.configure(font='TkFixedFont')
+
+        # Create textLogger
+        self.text_handler = WidgetLogger(self.scrollt)
+
+        # Logging configuration
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s')
+
+        # Add the handler to logger
+        self.logger = logging.getLogger()
+        self.logger.addHandler(self.text_handler)
+
+        # Send to XNAT:
+        self.send_xnat = Tkinter.IntVar()
+        self.cb_xnat = ttk.Checkbutton(self.lfdata, text="Send to XNAT",
+                                       variable=self.send_xnat)
+        self.xnat_host_var = Tkinter.StringVar()
+        self.xlabel = ttk.Label(self.lfdata, text=u"XNAT Host:")
+        self.xnathost = ttk.Entry(self.lfdata, textvariable=self.xnat_host_var,
+                                  width=40)
+        self.xnat_host_var.set(os.environ.get('XNAT_HOST', DEFAULT_HOST))
+        self.exe_var = Tkinter.StringVar()
+        self.elabel = ttk.Label(self.lfdata, text=u"Send DICOM Executable:")
+        self.exe = ttk.Entry(self.lfdata, textvariable=self.exe_var, width=40)
+        self.exe_var.set(os.environ.get('DCM_SEND', DEFAULT_EXE))
+        # Select file:
+        self.find_exe = ttk.Button(self.lfdata, text='Find Exe',
+                                   command=self.askopenfilename)
+
+        # Grid:
+        west_stk = Tkinter.N + Tkinter.S + Tkinter.W
+        self.grid(column=0, row=0, columnspan=4, rowspan=6)
+        self.label.grid(columnspan=2, column=1, row=0)
+
+        self.dicoms.grid(columnspan=4, column=0, row=1)
+        self.dcm_label.grid(columnspan=1, column=0, row=0, sticky=west_stk)
+        self.dcm_entry.grid(columnspan=1, column=1, row=0, sticky=west_stk)
+        self.find.grid(columnspan=3, column=1, row=1)
+
+        self.lfdata.grid(columnspan=4, column=0, row=3)
+        self.plabel.grid(columnspan=1, column=0, row=0, sticky=west_stk)
+        self.project.grid(columnspan=3, column=1, row=0, sticky=west_stk)
+        self.slabel.grid(columnspan=1, column=0, row=1, sticky=west_stk)
+        self.subject.grid(columnspan=3, column=1, row=1, sticky=west_stk)
+        self.nlabel.grid(columnspan=1, column=0, row=2, sticky=west_stk)
+        self.comments.grid(columnspan=3, column=1, row=2, sticky=west_stk)
+        self.cb_xnat.grid(columnspan=3, column=0, row=3, sticky=west_stk)
+        self.xlabel.grid(columnspan=1, column=0, row=4, sticky=west_stk)
+        self.xnathost.grid(columnspan=3, column=1, row=4, sticky=west_stk)
+        self.elabel.grid(columnspan=1, column=0, row=5, sticky=west_stk)
+        self.exe.grid(columnspan=1, column=1, row=5, sticky=west_stk)
+        self.find_exe.grid(columnspan=3, column=1, row=6, sticky=west_stk)
+
+        self.actions.grid(columnspan=4, column=0, row=4)
+        self.stop.grid(column=1, row=0)
+        self.anonymise.grid(column=3, row=0)
+
+        self.logs.grid(columnspan=4, column=0, row=5)
+        self.scrollt.grid(columnspan=4, column=1, row=0, sticky=west_stk)
+
+    def askdirectory(self):
+        """Returns a selected directoryname."""
+        # Clear previous logs:
+        self.text_handler.clear()
+
+        # define options for opening or saving a file
+        dir_opt = options = {}
+        options['initialdir'] = self.previous_dir
+        options['mustexist'] = True
+        options['parent'] = self.parent
+        options['title'] = 'Open Dicom directory'
+        self.dcm_dir.set(tkFileDialog.askdirectory(**dir_opt))
+        self.previous_dir = self.dcm_dir.get()
+
+    def askopenfilename(self):
+        """
+        Returns an opened file in read mode.
+        This time the dialog just returns a filename and the file is opened
+        by your own code.
+        """
+        # get filename
+        # define options for opening or saving a file
+        file_opt = options = {}
+        options['initialdir'] = os.getcwd()
+        options['parent'] = self.parent
+        options['title'] = 'Select Executable (DicomRemap or dcmsend)'
+        self.exe_var.set(tkFileDialog.askopenfilename(**file_opt))
+
+    def stop(self):
+        """Stop the script."""
+        self.parent.destroy()
+        sys.exit()
+
+    def anonymise_dicom(self):
+        """Submit the qc to XNAT."""
+        # Clear previous logs:
+        self.text_handler.clear()
+
+        dcm_dir = self.dcm_dir.get()
+        project = self.project_var.get()
+        subject = self.subject_var.get()
+
+        if not dcm_dir:
+            self.logger.info('ERROR: DICOM directory not defined.\n')
+            return
+        if not os.path.isdir(dcm_dir):
+            self.logger.info(
+                'ERROR: DICOM directory does not exist: {}.\n'.format(dcm_dir))
+            return
+
+        if not project:
+            self.logger.info('ERROR: Project not defined.\n')
+            return
+
+        if not subject:
+            self.logger.info('ERROR: Subject not defined.\n')
+            return
+
+        if self.out_dir:
+            out_dir = self.out_dir
+        else:
+            out_dir = os.path.join(os.path.dirname(dcm_dir),
+                                   '%s_ano' % self.subject_var.get())
+
+        out_dir = os.path.abspath(out_dir)
+        if not os.path.exists(out_dir):
+            try:
+                os.makedirs(out_dir)
+            except OSError:
+                self.logger.info(
+                    "ERROR: Permission denied: '{}'.\n".format(out_dir))
+
+        suffix = self.comments_var.get() if self.comments_var.get() else None
+
+        anonymize_files(dcm_dir, out_dir, project, subject, suffix,
+                        logger=self.logger)
+
+        if self.send_xnat.get() == 1:
+            host = self.xnat_host_var.get()
+            exe = self.exe_var.get()
+            send_to_xnat(exe, out_dir, host, logger=self.logger)
+
+    def close_window(self):
+        """Close window will terminate the script."""
+        self.parent.destroy()
+        sys.exit()
+
+
+def get_dicom_files(folder):
+    """
+    return all the dicom files from a folder
+
+    :param fpath: path of the file
+    :return boolean: true if it's a DICOM, false otherwise
+    """
+    dicom_files = list()
+    for filename in os.listdir(folder):
+        fpath = os.path.join(folder, filename)
+        if os.path.isfile(fpath) and is_dicom(fpath):
+            dicom_files.append(fpath)
+        elif os.path.isdir(fpath):
+            dicom_files.extend(get_dicom_files(fpath))
+    return dicom_files
+
+
+def is_dicom(fpath):
+    """
+    check if the file is a DICOM medical data
+
+    :param fpath: path of the file
+    :return boolean: true if it's a DICOM, false otherwise
+    """
+    if 'win' in sys.platform:
+        return True
+    else:
+        file_call = '''file {fpath}'''.format(fpath=fpath)
+        output = sb.check_output(file_call.split())
+        if 'dicom' in output.lower():
+            return True
+
+        return False
+
+
+def anonymize_files(in_dir, out_dir, xnat_project, xnat_subject, log_wg,
+                    suffix=None, logger=None):
+    """
+    Anonymize a DICOM file.
+
+    :param in_path: File path to read from.
+    :param out_path: File path to write to.
+    :param xnat_project: project on XNAT
+    :param xnat_subject: subject on XNAT
+    :param suffix: suffix for session naming
+    :param logger: logger object
+    """
+    patient_id = None
+    # get dicom files from folder
+    dicoms_list = get_dicom_files(in_dir)
+
+    if not dicoms_list:
+        msg = 'ERROR: No DICOM files found in {}.\n'
+        print_logs(msg.format(in_dir), logger)
+        return
+
+    # anonymize the dicoms:
+    print_logs('Anonymizing dicoms in {}:\n'.format(in_dir), logger)
+    print_logs('Progress: ', logger)
+    for dcm_file in dicoms_list:
+        print_logs('*', logger)
+        out_dcm_path = os.path.join(os.path.abspath(out_dir),
+                                    os.path.basename(dcm_file))
+        try:
+            dcm_obj = dicom.read_file(dcm_file)
+        except dicom.filereader.InvalidDicomError:
+            msg = '\nWARNING: {} file is not a dicom. It can not be open with \
+pydicom.\n'.format(dcm_file)
+            print_logs(msg, logger)
+            return
+
+        # Good Patient
+        if 'PatientID' in dcm_obj:
+            patient = dcm_obj.__getattr__('PatientID')
+        elif 'PatientName' in dcm_obj:
+            patient = dcm_obj.__getattr__('PatientName')
+        else:
+            pass
+
+        if patient_id is not None and patient != patient_id:
+            tmp = '\nERROR: Different patient_id found in the folder. Please \
+provide a folder with only one patient: {} <> {}.\n'
+            print_logs(tmp.format(patient_id, patient), logger)
+            return
+
+        comment = None
+
+        subj = xnat_subject
+        if suffix:
+            subj = '%s_%s' % (subj, suffix)
+        if 'SeriesDate' in dcm_obj:
+            session = '%s_%s' % (subj, dcm_obj.__getattr__('SeriesDate'))
+        elif 'StudyDate' in dcm_obj:
+            session = '%s_%s' % (subj, dcm_obj.__getattr__('StudyDate'))
+        else:
+            session = xnat_subject
+        comment = COMMENT_TMP.format(project=xnat_project,
+                                     subject=xnat_subject,
+                                     session=session)
+
+        def _remove_field(field):
+            _update_field(field, "")
+
+        def _update_field(field, value):
+            if field not in dcm_obj:
+                return
+            if value is None:
+                dcm_obj.__delattr__(field)
+            else:
+                dcm_obj.__setattr__(field, value)
+
+        # Set the Patients comments for XNAT:
+        if comment:
+            dcm_obj.PatientComments = comment
+            # set the PatientID to the subjectID:
+            dcm_obj.PatientName = xnat_subject
+            dcm_obj.PatientID = session
+
+        # Set PatientBirthDate:
+        if 'PatientBirthDate' in dcm_obj and dcm_obj.PatientBirthDate:
+            dcm_obj.PatientBirthDate = dcm_obj.PatientBirthDate[:4] + '0101'
+
+        # Remove tags
+        for field in REMOVE_BY_DEFAULT_NAME:
+            _remove_field(field)
+        for tag in REMOVE_BY_DEFAULT_TAG:
+            if tag in dcm_obj:
+                dcm_obj[tag].value = ''
+
+        dcm_obj.remove_private_tags()
+
+        dcm_obj.save_as(out_dcm_path)
+
+    print_logs('\nAnonymisation done.\n', logger)
+
+
+def print_logs(msg, logger=None):
+    if logger is not None:
+        logger.info(msg)
+    else:
+        print(msg)
+
+
+def send_to_xnat(exe, dicom_folder, host, logger=None):
+    print_logs('\nSending data to XNAT: {}\n'.format(host), logger)
+    if exe is None or not executable_exists(exe):
+        print_logs('ERROR: Executable not found: %s\n' % exe, logger)
+        return
+
+    host_str = host
+    if DEFAULT_EXE in os.path.basename(exe):
+        if host_str.startswith('http'):
+            host_str = 'dicom%s' % host_str[5:]
+        elif host_str.startswith('https'):
+            host_str = 'dicom%s' % host_str[6:]
+        cmd = '%s -o %s:8104/XNAT %s' % (exe, host_str, dicom_folder)
+    elif 'dcmsnd' in os.path.basename(exe):
+        if host_str.startswith('http'):
+            host_str = host_str[8:]
+        elif host_str.startswith('https'):
+            host_str = host_str[9:]
+        cmd = '%s XNAT@%s:8104 %s' % (exe, host_str, dicom_folder)
+    else:
+        msg = 'ERROR: Executable unknown to send dicom: {}\n'
+        print_logs(msg.format(exe), logger)
+        return
+
+    os.system(cmd)
+
+    print_logs('Data sent.\n', logger)
+
+
+def executable_exists(executable):
+    """ Return True if the executable exists.
+
+    If the full path is given, check that it's an executable.
+    Else check in PATH for the file.
+    """
+    if '/' in executable and os.path.isfile(executable):
+        return os.access(os.path.abspath(executable), os.X_OK)
+    else:
+        if True in [os.path.isfile(os.path.join(path, executable)) and
+                    os.access(os.path.join(path, executable), os.X_OK)
+                    for path in os.environ["PATH"].split(os.pathsep)]:
+            return True
+    return False
+
+
+if __name__ == '__main__':
+    root = Tkinter.Tk()
+    root.geometry('800x1000')
+    root.configure(background='grey')
+    XNATDicomAnonymise(root)
+    root.mainloop()

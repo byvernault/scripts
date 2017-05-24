@@ -149,8 +149,8 @@ def generate_preview(nifti, smgif, lggif):
             final_data = rescale(final_data)
         # Generate our big size1 * size2 numpyArray for snapshots
         size = final_data.shape
-        n2 = np.ceil(np.sqrt(size[3]))
-        out = np.zeros([n2*size[0], n2*size[1]])
+        n2 = int(np.ceil(np.sqrt(size[3])))
+        out = np.zeros([n2 * size[0], n2 * size[1]])
         row = 0
         col = 0
         for i in range(size[3]):
@@ -228,9 +228,10 @@ def resize_100_slices(data):
     slices_list = np.round(np.linspace(0, size[2]-1, num=100))
     new_size = [size[0], size[1], len(slices_list)]
     new_array = np.zeros(new_size)
+
     # looping through array
     for index, i in enumerate(slices_list):
-        new_array[..., index] = data[..., i]
+        new_array[..., index] = data[..., int(i)]
 
     return new_array
 

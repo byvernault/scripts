@@ -79,8 +79,10 @@ REMOVE_BY_DEFAULT_TAG = [0x00081048,  # Physician(s) Of Record
                          0x00401001,  # Requested Procedure ID
                          0x00400254]  # Performed Procedure Step Description
 
-KEEP_TAG = [(0x0043, 0x102D),
-            (0x0043, 0x1081)]
+KEEP_TAG = [
+    # (0x0043, 0x102D),
+    # (0x0043, 0x1081)
+]
 
 
 def parse_args():
@@ -95,6 +97,8 @@ def parse_args():
                       help='Project ID on XNAT. If not set, prompt user.')
     argp.add_argument('--subject', dest='subject', default=None,
                       help='Subject label on XNAT. If not set, prompt user.')
+    argp.add_argument('--suffix', dest='suffix', default=None,
+                      help='Suffix to add for experiment.')
     helpstr = 'Directory where the dicom will be saved. If None, overwrite \
 the original dicom.'
     argp.add_argument('-o', '--out_dir', dest='out_dir', default=None,
@@ -172,13 +176,17 @@ def is_dicom(fpath):
 
 
 def anonymize_file(in_path, out_path, patient_id, xnat_project, xnat_subject,
-                   keep=(), remove=(), keep_private_tags=False, **kwargs):
+                   suffix=None, keep=(), remove=(), keep_private_tags=False,
+                   **kwargs):
     """
     Anonymize a DICOM file.
 
     :param in_path: File path to read from.
     :param out_path: File path to write to.
-    :param patient_dict: patient dictionary from csv
+    :param patient_id: patient ID from dicom
+    :param xnat_project: project on XNAT
+    :param xnat_subject: subject on XNAT
+    :param suffix: suffix for session naming
     :param remove: A list of fields that should be removed in addition to the
                    default ones.
     :param keep: A list of fields that should be kept in the file
@@ -195,7 +203,7 @@ def anonymize_file(in_path, out_path, patient_id, xnat_project, xnat_subject,
     """
     try:
         dicom_obj = dicom.read_file(in_path)
-    except dicom.InvalidDicomError:
+    except dicom.filereader.InvalidDicomError:
         print 'Warning: %s file is not a dicom. It can not be open with \
 pydicom.'
         return
@@ -213,10 +221,13 @@ pydicom.'
     print "    - Editing %s" % in_path
     comment = None
 
+    subj = xnat_subject
+    if suffix:
+        subj = '%s_%s' % (subj, suffix)
     if 'SeriesDate' in dicom_obj:
-        session = '%s_%s' % (xnat_subject, dicom_obj.__getattr__('SeriesDate'))
+        session = '%s_%s' % (subj, dicom_obj.__getattr__('SeriesDate'))
     elif 'StudyDate' in dicom_obj:
-        session = '%s_%s' % (xnat_subject, dicom_obj.__getattr__('StudyDate'))
+        session = '%s_%s' % (subj, dicom_obj.__getattr__('StudyDate'))
     else:
         print 'Date not found ... setting session to subject'
         session = xnat_subject
@@ -313,12 +324,20 @@ def send_to_xnat(exe, dicom_folder, host):
         raise Exception('Executable not found: %s' % exe)
 
     host_str = host
-    if host_str.startswith('http'):
-        host_str = 'dicom%s' % host_str[5:]
-    elif host_str.startswith('https'):
-        host_str = 'dicom%s' % host_str[6:]
-
-    cmd = '%s -o %s:8104/XNAT %s' % (exe, host_str, dicom_folder)
+    if 'DicomRemap' in os.path.basename(exe):
+        if host_str.startswith('http'):
+            host_str = 'dicom%s' % host_str[5:]
+        elif host_str.startswith('https'):
+            host_str = 'dicom%s' % host_str[6:]
+        cmd = '%s -o %s:8104/XNAT %s' % (exe, host_str, dicom_folder)
+    elif 'dcmsnd' in os.path.basename(exe):
+        if host_str.startswith('http'):
+            host_str = host_str[8:]
+        elif host_str.startswith('https'):
+            host_str = host_str[9:]
+        cmd = '%s XNAT@%s:8104 %s' % (exe, host_str, dicom_folder)
+    else:
+        raise Exception('Executable unknown to send dicom: %s' % exe)
     print '  --> Running command: %s' % cmd
     os.system(cmd)
 
@@ -347,7 +366,9 @@ def main_fct():
     print "Time: ", str(datetime.now())
 
     # Ask user for project and subject on XNAT:
-    project, subject = ask_user(args.patient, args.project, args.subject)
+    # project, subject = ask_user(args.patient, args.project, args.subject)
+    project = args.project
+    subject = args.subject
 
     if args.out_dir:
         out_dir = args.out_dir
@@ -368,7 +389,7 @@ def main_fct():
         out_dcm_path = os.path.join(os.path.abspath(out_dir),
                                     os.path.basename(dicom_file))
         anonymize_file(dicom_file, out_dcm_path, args.patient, project,
-                       subject)
+                       subject, args.suffix)
 
     if args.send_xnat:
         host = args.host

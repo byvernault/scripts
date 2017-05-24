@@ -1,4 +1,7 @@
-"""TEST number 2 Script for different purpose."""
+"""TEST number 2 Script for different purpose.
+
+>>> l='salut'
+"""
 
 import os
 import glob

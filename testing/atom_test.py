@@ -23,54 +23,38 @@ from dax import XnatUtils
 __author__ = 'byvernault'
 __email__ = 'b.yvernault@ucl.ac.uk'
 __purpose__ = "Test Code"
-FILES = ['Mrishta_Unnamed.rois_series',
-         'rmhaohn_Unnamed.rois_series',
-         'ROI_2015.rois_series']
 
 
-def check_files(files):
-    if len(files) != len(FILES):
-        return False
+site = 'austin'
+site_nb = '01'
 
-    for val in files:
-        if val not in FILES:
-            return False
 
-    return True
+def check_folder(folder, pid=1):
+    _p = os.path.join(folder, str(pid))
+    if os.path.exists(_p):
+        pid += 1
+        _p = check_folder(folder, pid)
+
+    return _p
 
 
 if __name__ == '__main__':
-    res_dir = '/Users/byvernault/data/tmp_rois/'
-    project = 'PICTURE'
-    XNAT = XnatUtils.get_interface()
-    li_t2 = XnatUtils.list_project_scans(XNAT, project)
-    li_t2 = XnatUtils.filter_list_dicts_regex(li_t2, 'type', ['T2 Axial'])
+    temp_dir = '/Users/byvernault/Documents/PROPS_data'
+    new_dir = '/Users/byvernault/data/PROPS_upload'
 
-    for scan in li_t2:
-        if 'OsiriX' in scan['resources']:
-            scan_obj = XnatUtils.get_full_object(XNAT, scan)
-            files = scan_obj.resource('OsiriX').files()
-            list_files = files.get()
-            if not check_files(list_files):
-                print ('Session %s does not have the files required: %s'
-                       % (scan['session_label'], list_files))
-            
-            # f_obj.delete()
-            # print ('ROI.rois_series deleted for %s / %s'
-            #        % (scan['session_label'], scan['ID']))
-
-            """
-            ndir = os.path.join(res_dir, scan['session_label'], scan['ID'])
-            if not os.path.exists(ndir):
-                os.makedirs(ndir)
-                scan_obj = XnatUtils.get_full_object(XNAT, scan)
-                f_obj = scan_obj.resource('OsiriX').file('ROI.rois_series')
-                if f_obj.exists():
-                    fpath = XnatUtils.download_file_from_obj(
-                                ndir, scan_obj.resource('OsiriX'),
-                                fname='ROI.rois_series')
-                    XnatUtils.upload_file_to_obj(
-                            fpath, scan_obj.resource('OsiriX'),
-                            fname='ROI_2015.rois_series', remove=True)
-                    print 'reuploaded for %s / %s' % (scan['session_label'],
-                                                      scan['ID'])"""
+    paths = glob.glob(os.path.join(temp_dir, '*', '*Austin*'))
+    for folder in paths:
+        for patient in os.listdir(folder):
+            _p = os.path.join(folder, patient)
+            if os.path.isdir(_p):
+                new_patient = patient.replace('-', '')\
+                                     .replace('_', '')\
+                                     .replace(' ', '')
+                _dir = os.path.join(new_dir, new_patient)
+                if not os.path.exists(new_dir):
+                    os.makedirs(new_dir)
+                _newp = check_folder(_dir)
+                # os.makedirs(_newp)
+                # copy:
+                print 'Copying %s to %s' % (_p, _newp)
+                shutil.copytree(_p, _newp)

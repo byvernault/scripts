@@ -355,12 +355,10 @@ def get_option_list(option):
 
 def get_info_xnat():
     """Extract information on objects to be qc from XNAT."""
-    try:
+    with XnatUtils.get_interface(host=HOST, user=USER,
+                                 pwd=PWD) as xnat:
         # Log to XNAT
         LOGGER.info('INFO: connection to xnat <%s>:' % (HOST))
-        xnat = XnatUtils.get_interface(host=OPTIONS.host,
-                                       user=USER,
-                                       pwd=PWD)
         if OPTIONS.is_scan:
             li_objs = XnatUtils.list_project_scans(xnat, OPTIONS.project)
         else:
@@ -386,9 +384,6 @@ def get_info_xnat():
             li_objs = filter_list(li_objs, 'procstatus', [COMPLETE])
             if not OPTIONS.force:
                 li_objs = filter_list(li_objs, 'qcstatus', [NEEDS_QA])
-
-    finally:
-        xnat.disconnect()
 
     return sorted(li_objs, key=lambda k: k['session_label'])
 
@@ -419,21 +414,18 @@ def qc_objects():
     nbo = len(LI_OBJS)
     for ind, obj_dict in enumerate(LI_OBJS):
         # Log to XNAT
-        xnat = XnatUtils.get_interface(host=OPTIONS.host,
-                                       user=USER,
-                                       pwd=PWD)
-        if OPTIONS.is_scan:
-            label = '%s - %s' % (obj_dict['session_label'], obj_dict['ID'])
-        else:
-            label = obj_dict['label']
-        msg = ' - control quality for %s - %d/%d'
-        LOGGER.info(msg % (label, ind+1, nbo))
-        # Object on XNAT data
-        obj = XnatUtils.get_full_object(xnat, obj_dict)
-        # download data
-        nii_files = download_qc_data(obj, obj_dict)
-        # disconnect after each download to let the user to qc without timeout
-        xnat.disconnect()
+        with XnatUtils.get_interface(host=HOST, user=USER,
+                                     pwd=PWD) as xnat:
+            if OPTIONS.is_scan:
+                label = '%s - %s' % (obj_dict['session_label'], obj_dict['ID'])
+            else:
+                label = obj_dict['label']
+            msg = ' - control quality for %s - %d/%d'
+            LOGGER.info(msg % (label, ind+1, nbo))
+            # Object on XNAT data
+            obj = XnatUtils.get_full_object(xnat, obj_dict)
+            # download data
+            nii_files = download_qc_data(obj, obj_dict)
 
         # QC: call NiftyMIDAS
         open_viewer(nii_files)
@@ -711,8 +703,8 @@ if __name__ == '__main__':
 on xnat(%s):" % (OPTIONS.username, HOST)
             PWD = getpass.getpass(prompt=MSG)
         else:
-            USER = os.environ['XNAT_USER']
-            PWD = os.environ['XNAT_PASS']
+            USER = None
+            PWD = None
 
         # NiftyMIDAS
         NIFTYMIDAS_EXE = ''

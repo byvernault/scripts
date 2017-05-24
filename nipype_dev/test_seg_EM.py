@@ -30,8 +30,8 @@ if args.mask:
 if args.output:
     em_node.inputs.out_file = args.output
 # em_node.inputs.outlier_val = (4.0, 0.01)
-# em_node.inputs.priors = (2, [args.input, args.input])
-em_node.inputs.no_prior = 4
+em_node.inputs.priors = [args.input, args.input]
+# em_node.inputs.no_prior = 4
 # em_node.inputs.max_iter = 50
 # em_node.inputs.min_iter = 2
 # em_node.inputs.bc_order_val = 3
@@ -40,6 +40,6 @@ em_node.inputs.no_prior = 4
 # em_node.inputs.relax_priors = (0.5, 2.0)
 
 print em_node.cmdline
-result = em_node.run()
+#result = em_node.run()
 
-print result.outputs
+# print result.outputs

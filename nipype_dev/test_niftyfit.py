@@ -1,42 +1,52 @@
 """Test seg_EM interface in nipype for niftyfit."""
 
-# from nipype.interfaces.niftyfit.dwi import FitDwi
-#
-# dwi_nifti = '/Users/byvernault/Downloads/scans/0016_ep2d_diff_MDDW_p2FAD_2.5mm_\
-# iso/NIFTI/aaco016_20110505-0016-ep2d_diff_MDDW_p2FAD_2.5mm_iso-diffusion_4D.\
-# nii.gz'
-# dwi_bval = '/Users/byvernault/Downloads/scans/0016_ep2d_diff_MDDW_p2FAD_2.5mm_\
-# iso/BVAL/aaco016_20110505_index.bval'
-# dwi_bvec = '/Users/byvernault/Downloads/scans/0016_ep2d_diff_MDDW_p2FAD_2.5mm_\
-# iso/BVEC/aaco016_20110505_index.bvec'
-#
-# test_node = FitDwi()
-# test_node.inputs.source_file = dwi_nifti
-# test_node.inputs.bval_file = dwi_bval
-# test_node.inputs.bvec_file = dwi_bvec
-# test_node.inputs.dti_flag = True
-# test_node.inputs.rgbmap_file = 'rgb_map.nii.gz'
-#
-# print test_node.cmdline
-# result = test_node.run()
-#
-# print result.outputs
+from nipype.interfaces.niftyfit import FitAsl, FitDwi, FitQt1
+import os
 
-from nipype.interfaces.niftyfit.asl import FitAsl
 
-source_file = '/Users/byvernault/Downloads/20140701_084347ASLPERF09NXRZ\
-s015a001.nii'
+data_dir = '/Users/byvernault/home-local/softwares/niftyfit-release/source/\
+niftyfit_data/'
 
-test_node = FitAsl()
-test_node.inputs.source_file = source_file
-test_node.inputs.pcasl = True
-test_node.inputs.PLD = 1800
-test_node.inputs.LDD = 1800
-test_node.inputs.eff = 0.614
-test_node.inputs.mul = 0.1
+dwi_nifti = os.path.join(data_dir, 'case01-dwi.nii.gz')
+dwi_bval = os.path.join(data_dir, 'case01-bval')
+dwi_bvec = os.path.join(data_dir, 'case01-bvec')
+asl_file = os.path.join(data_dir, 'case01-asl.nii.gz')
+seg_file = os.path.join(data_dir, 'case01-seg.nii.gz')
+qt1_file = os.path.join(data_dir, 'case01-qt1_sr.nii.gz')
+
+test_node = FitDwi(dti_flag=True)
+test_node.base_dir = '/Users/byvernault/data/test_dwi'
+test_node.inputs.source_file = dwi_nifti
+test_node.inputs.bval_file = dwi_bval
+test_node.inputs.bvec_file = dwi_bvec
 
 print test_node.cmdline
 
 result = test_node.run()
 
 print result.outputs
+
+# test_node = FitAsl()
+# test_node.inputs.source_file = asl_file
+# test_node.inputs.seg = seg_file
+# test_node.inputs.pcasl = True
+# test_node.inputs.PLD = 1800
+# test_node.inputs.LDD = 1800
+# test_node.inputs.eff = 0.614
+# test_node.inputs.mul = 0.1
+
+# print test_node.cmdline
+
+# result = test_node.run()
+
+# print result.outputs
+
+# test_node = FitQt1(IR=True)
+# test_node.inputs.source_file = qt1_file
+# test_node.inputs.TIs = [1, 2, 5]
+
+# print test_node.cmdline
+
+# result = test_node.run()
+
+# print result.outputs

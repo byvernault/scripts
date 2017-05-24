@@ -15,10 +15,41 @@ __modifications__ = '7 October 2015 - Original write'
 
 
 PCOMMENT_TEMPLATE = """Project:{project};Subject:{subject};Session:{session}"""
-
 DICOM_FIELDS = {"commentsXnat": [0x0010, 0x4000],
                 "subject": [0x0010, 0x0010],
                 "serie": [0x0020, 0x0010]}
+REMOVE_BY_DEFAULT_NAME = ('InstitutionAddress',
+                          'PatientSex',
+                          'PatientAge',
+                          'PatientAddress',
+                          'MilitaryRank',
+                          'Allergies',
+                          'AdditionalPatientHistory',
+                          'OtherPatientIDs',
+                          'PerformingPhysicianName',
+                          'OperatorsName',
+                          'ReferringPhysicianName',
+                          'StudyDate',
+                          'StudyDescription',
+                          'AcquisitionDate',
+                          'AcquisitionNumber',
+                          'ContentDate',
+                          'AcquisitionDateTime',
+                          'ContentTime',
+                          'SeriesTime',
+                          'AcquisitionTime',
+                          'AccessionNumber',
+                          'StationName',
+                          'StudyID',
+                          'RequestingService',
+                          'RequestingPhysician',
+                          'StudyComments',
+                          'PrivateCreatorDataElement',
+                          'RequestedProcedureDescription',
+                          'CurrentPatientLocation',
+                          'ScanningSequence',
+                          'SequenceVariant',
+                          'ScanOptions')
 
 
 def parse_args():
@@ -30,6 +61,8 @@ def parse_args():
                       help='Directory containing DICOMs.', required=True)
     argp.add_argument('-p', '--project', dest='project',
                       help='Project ID on XNAT.', required=True)
+    argp.add_argument('-s', '--session', dest='session',
+                      help='Last session processed.', default=None)
     return argp.parse_args()
 
 def get_info_file(directory, project):
@@ -101,11 +134,25 @@ def set_dicom_field(dcmfolder, comment):
     for dcmfile in os.listdir(dcmfolder):
         dicom_path = os.path.join(dcmfolder, dcmfile)
         if os.path.isfile(dicom_path) and is_dicom(dicom_path):
-            print "   file: "+dcmfile
+            print "   file: " + dcmfile
             dcm = dicom.read_file(dicom_path)
             # edit the header
             dcm.PatientComments = comment
             dcm.save_as(dicom_path)
+
+
+def _remove_field(dicom_obj, field):
+    _update_field(dicom_obj, field, "")
+
+
+def _update_field(dicom_obj, field, value):
+    if field not in dicom_obj:
+        return
+    if value is None:
+        dicom_obj.__delattr__(field)
+    else:
+        dicom_obj.__setattr__(field, value)
+
 
 if __name__ == '__main__':
     OPTIONS = parse_args()
@@ -131,43 +178,55 @@ if __name__ == '__main__':
     with XnatUtils.get_interface() as xnat:
         # Scans list
         set_patient_comment = True
-        list_subject = ['INN-047-FCO']
+        list_subject = list()
         scan_list = XnatUtils.list_project_scans(xnat, OPTIONS.project)
-        scan_list = filter(lambda x: x['subject_label'] in list_subject,
-                           scan_list)
-        for sc in scan_list:
-            print "dicoms for session %s / scan %s " % (sc['session_label'],
-                                                        sc['ID'])
+        if list_subject:
+            scan_list = filter(lambda x: x['subject_label'] in list_subject,
+                               scan_list)
 
-            res_obj = XnatUtils.get_full_object(xnat, sc).resource('DICOM')
-            if not res_obj.exists():
-                continue
-            tmpdir = os.path.join(os.path.abspath(
-                                    OPTIONS.directory),
-                                  sc['session_label'],
-                                  sc['ID'])
-            if not os.path.exists(tmpdir):
-                os.makedirs(tmpdir)
-            else:
-                print '  skip it. already processed.'
-                continue
+        start_proc = False if OPTIONS.session is not None else True
+        for sc in sorted(scan_list, key=lambda k: k['session_label']):
+            if OPTIONS.session == sc['session_label']:
+                start_proc = True
 
-            dicom_file = XnatUtils.download_file_from_obj(directory=tmpdir,
-                                                          resource_obj=res_obj)
-            # for dicom_path in dicom_files:
-            print "   file: %s " % dicom_file
-            dcm = dicom.read_file(dicom_file)
-            # edit the header
-            dcm.PatientName = sc['subject_label']
-            dcm.PatientID = sc['session_label']
-            if set_patient_comment:
-                temp = 'Project:%s;Subject:%s;Session:%s'
-                dcm.PatientComments = temp % (sc['project_id'],
-                                              sc['subject_label'],
-                                              sc['session_label'])
-            # dcm.SeriesDescription = sc['series_description']
-            dcm.save_as(dicom_file)
-            XnatUtils.upload_file_to_obj(dicom_file, res_obj, remove=True)
-            print "------"
+            if start_proc:
+                print("dicoms for session %s / scan %s "
+                      % (sc['session_label'], sc['ID']))
+
+                res_obj = XnatUtils.get_full_object(xnat, sc).resource('DICOM')
+                if not res_obj.exists():
+                    continue
+                tmpdir = os.path.join(os.path.abspath(OPTIONS.directory),
+                                      sc['session_label'],
+                                      sc['ID'])
+                if not os.path.exists(tmpdir):
+                    os.makedirs(tmpdir)
+                else:
+                    print '  skip it. already processed.'
+                    continue
+
+                dcm_files = XnatUtils.download_files_from_obj(
+                    directory=tmpdir, resource_obj=res_obj)
+                for dcm_name in dcm_files:
+                    # for dicom_path in dicom_files:
+                    print "   file: %s " % dcm_name
+                    dcm = dicom.read_file(dcm_name)
+                    # edit the header
+                    dcm.PatientName = sc['subject_label']
+                    dcm.PatientID = sc['session_label']
+
+                    # Remove tags
+                    for field in REMOVE_BY_DEFAULT_NAME:
+                        _remove_field(dcm, field)
+
+                    if set_patient_comment:
+                        temp = 'Project:%s;Subject:%s;Session:%s'
+                        dcm.PatientComments = temp % (sc['project_id'],
+                                                      sc['subject_label'],
+                                                      sc['session_label'])
+                    # dcm.SeriesDescription = sc['series_description']
+                    dcm.save_as(dcm_name)
+                XnatUtils.upload_files_to_obj(dcm_files, res_obj, remove=True)
+                print "------"
     print "DICOMs read and edited."
     print '==================================================================='

@@ -27,6 +27,7 @@ __email__ = 'b.yvernault@ucl.ac.uk'
 __purpose__ = "Convert DICOM to NIFTI for a project on XNAT."
 __version__ = '1.0.0'
 __modifications__ = '10 September 2015 - Original write'
+LIMIT_SIZE = 100
 
 
 def parse_args():
@@ -178,7 +179,7 @@ JPEG DICOM to regular DICOM."
         os.remove(os.path.join(dcm_dir, dicoms))
 
 
-def upload_converted_images(dicom_files, dcm_dir, scan_obj):
+def upload_converted_images(dicom_files, dcm_dir, scan_obj, need_to_zip):
     """Upload the images after checking them.
 
     :param dicom_files: list of dicoms files to zip
@@ -228,7 +229,7 @@ def upload_converted_images(dicom_files, dcm_dir, scan_obj):
                                           remove=True)
 
         # ZIP the DICOM if more than one
-        if len(dicom_files) > 1 and OPTIONS.zip_dicoms:
+        if need_to_zip and OPTIONS.zip_dicoms:
             # Remove the files created before zipping:
             for nii_file in nifti_list:
                 os.remove(nii_file)
@@ -240,15 +241,19 @@ def upload_converted_images(dicom_files, dcm_dir, scan_obj):
             initdir = os.getcwd()
             # Zip all the files in the directory
             os.chdir(dcm_dir)
-            os.system('zip -r '+fzip+' * > /dev/null')
+            os.system('zip -r %s * > /dev/null' % fzip)
             # return to the initial directory:
             os.chdir(initdir)
+            _fzip = os.path.join(dcm_dir, fzip)
             # upload
-            if os.path.exists(os.path.join(dcm_dir, fzip)):
+            if os.path.exists():
                 print '   --> uploading zip dicoms'
                 scan_obj.resource('DICOM').delete()
-                scan_obj.resource('DICOM').put_zip(os.path.join(dcm_dir, fzip),
-                                                   overwrite=True,
+                size_file = int(os.stat(_fzip).st_size) / (1024 * 1024)
+                if size_file >= LIMIT_SIZE:
+                    msg = 'Big DICOM resource.'
+                    print(msg)
+                scan_obj.resource('DICOM').put_zip(_fzip, overwrite=True,
                                                    extract=False)
 
         # more than one NIFTI uploaded
@@ -305,6 +310,7 @@ def convert_DICOM():
                              total=number_scans,
                              session=scan['session_label'],
                              scan=scan['ID'])
+        need_to_zip = False
         scan_obj = XnatUtils.get_full_object(XNAT, scan)
         if scan_obj.exists() and \
            len(scan_obj.resource('DICOM').files().get()) > 0:
@@ -319,6 +325,9 @@ def convert_DICOM():
                     scan_obj.resource('NIFTI').delete()
 
                 dcm_dir = os.path.join(OPTIONS.directory, 'DICOM')
+                if len(fpaths) > 1:
+                    need_to_zip = True
+
                 if len(fpaths) == 1 and fpaths[0].endswith('.zip'):
                     if not os.path.exists(dcm_dir):
                         os.makedirs(dcm_dir)
@@ -349,7 +358,8 @@ def convert_DICOM():
 conversion dcmjpeg. no upload."
                     else:
                         # UPLOADING THE RESULTS
-                        upload_converted_images(dicom_files, dcm_dir, scan_obj)
+                        upload_converted_images(dicom_files, dcm_dir, scan_obj,
+                                                need_to_zip)
 
                     # clean tmp folder
                     XnatUtils.clean_directory(OPTIONS.directory)
