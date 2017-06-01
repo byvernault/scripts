@@ -5,8 +5,9 @@ import dicom
 import logging
 import os
 import ScrolledText
-import sys
+import shutil
 import subprocess as sb
+import sys
 import tkFileDialog
 import Tkinter
 import ttk
@@ -72,19 +73,19 @@ class WidgetLogger(logging.Handler):
         logging.Handler.__init__(self)
         self.setLevel(logging.INFO)
         self.widget = widget
-        self.widget.config(state='disabled')
+        self.widget.config(state='normal')
 
     def emit(self, record):
-        self.widget.config(state='normal')
+        # self.widget.config(state='normal')
         # Append message (record) to the widget
         self.widget.insert(Tkinter.END, self.format(record))
         self.widget.see(Tkinter.END)  # Scroll to the bottom
-        self.widget.config(state='disabled')
+        # self.widget.config(state='disabled')
 
     def clear(self):
-        self.widget.config(state='normal')
+        # self.widget.config(state='normal')
         self.widget.delete('1.0', Tkinter.END)
-        self.widget.config(state='disabled')
+        # self.widget.config(state='disabled')
 
 
 class XNATDicomAnonymise(ttk.Frame):
@@ -93,8 +94,7 @@ class XNATDicomAnonymise(ttk.Frame):
         """Init method."""
         # variables:
         self.previous_dir = os.environ.get("HOME")
-        self.out_dir = None
-        # self.out_dir = os.path.join(os.environ.get("HOME"), 'ano')
+        self.out_dir = os.path.join(os.environ.get("HOME"), '.xnatano')
 
         # GUI
         ttk.Frame.__init__(self, parent, width=800, height=1000)
@@ -292,10 +292,29 @@ class XNATDicomAnonymise(ttk.Frame):
             exe = self.exe_var.get()
             send_to_xnat(exe, out_dir, host, logger=self.logger)
 
+        clean_directory(out_dir)
+
     def close_window(self):
         """Close window will terminate the script."""
         self.parent.destroy()
         sys.exit()
+
+
+def clean_directory(directory):
+    """
+    Remove a directory tree or file
+
+    :param directory: The directory (with sub directories if desired that you
+     want to delete). Also works with a file.
+    :return: None
+
+    """
+    for fname in os.listdir(directory):
+        fpath = os.path.join(directory, fname)
+        if os.path.isdir(fpath):
+            shutil.rmtree(fpath)
+        else:
+            os.remove(fpath)
 
 
 def get_dicom_files(folder):
@@ -359,15 +378,14 @@ def anonymize_files(in_dir, out_dir, xnat_project, xnat_subject, log_wg,
     print_logs('Progress: ', logger)
     for dcm_file in dicoms_list:
         print_logs('*', logger)
-        out_dcm_path = os.path.join(os.path.abspath(out_dir),
-                                    os.path.basename(dcm_file))
+        out_dcm_path = get_out_path(out_dir, dcm_file)
         try:
             dcm_obj = dicom.read_file(dcm_file)
         except dicom.filereader.InvalidDicomError:
             msg = '\nWARNING: {} file is not a dicom. It can not be open with \
 pydicom.\n'.format(dcm_file)
             print_logs(msg, logger)
-            return
+            continue
 
         # Good Patient
         if 'PatientID' in dcm_obj:
@@ -432,6 +450,31 @@ provide a folder with only one patient: {} <> {}.\n'
         dcm_obj.save_as(out_dcm_path)
 
     print_logs('\nAnonymisation done.\n', logger)
+
+
+def get_out_path(out_dir, dcm_file, count=None):
+    if count is not None:
+        base = os.path.basename(dcm_file)
+        if len(base.split('.')) > 1:
+            base, ext = base.split('.')
+            ext = '.{}'.format(ext)
+        else:
+            ext = ''
+        out_path = os.path.join(os.path.abspath(out_dir),
+                                '{}_{}{}'.format(base, str(count), ext))
+    else:
+        out_path = os.path.join(os.path.abspath(out_dir),
+                                os.path.basename(dcm_file))
+
+    # If file exists, add a one to count:
+    if os.path.isfile(out_path):
+        if not count:
+            count = 1
+        else:
+            count += 1
+        out_path = get_out_path(out_dir, dcm_file, count)
+
+    return out_path
 
 
 def print_logs(msg, logger=None):
