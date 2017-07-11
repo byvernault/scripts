@@ -19,7 +19,7 @@ __purpose__ = "Anonymise DICOM header for XNAT."
 __version__ = '1.0.0'
 __modifications__ = '13 February 2017 - Original write'
 
-# Variables
+# Variables  
 DEFAULT_HOST = 'https://prostate-xnat.cs.ucl.ac.uk'
 DEFAULT_EXE = 'DicomRemap'
 COMMENT_TMP = """Project:{project};Subject:{subject};Session:{session}"""

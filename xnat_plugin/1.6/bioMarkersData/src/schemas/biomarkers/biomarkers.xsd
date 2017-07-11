@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+  <xs:schema targetNamespace="http://cmic-xnat.cs.ucl.ac.uk/schemas/cmic-xnat"
+    xmlns:cx="http://cmic-xnat.cs.ucl.ac.uk/schemas/cmic-xnat"
+    xmlns:xdat="http://nrg.wustl.edu/xdat"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:xnat="http://nrg.wustl.edu/xnat"
+    elementFormDefault="qualified"
+    attributeFormDefault="unqualified">
+  <xs:import namespace="http://nrg.wustl.edu/xnat" schemaLocation="../xnat/xnat.xsd"/>
+  <xs:element name="BioMarkers" type="cx:bioMarkersData"/>
+  <xs:complexType name="bioMarkersData">
+    <xs:complexContent>
+      <xs:extension base="xnat:subjectAssessorData">
+        <xs:sequence>
+          <xs:element name="norm" minOccurs="0">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="amyloidbeta" minOccurs="0">
+                  <xs:annotation>
+                    <xs:documentation>Amyloid beta quantification from CSF normalised</xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                    <xs:restriction base="xs:float">
+                    </xs:restriction>
+                  </xs:simpleType>
+                </xs:element>
+                <xs:element name="tauprotein" minOccurs="0">
+                  <xs:annotation>
+                    <xs:documentation>Tau Protein quantification from CSF normalised</xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                    <xs:restriction base="xs:float">
+                    </xs:restriction>
+                  </xs:simpleType>
+                </xs:element>
+                <xs:element name="phosphorylated" minOccurs="0">
+                  <xs:annotation>
+                    <xs:documentation>Phosphorylated tau protein quantification from CSF normalised</xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                    <xs:restriction base="xs:float">
+                    </xs:restriction>
+                  </xs:simpleType>
+                </xs:element>
+              </xs:sequence>
+            </xs:complexType>
+          </xs:element>
+          <xs:element name="raw" minOccurs="0">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="amyloidbeta" minOccurs="0">
+                  <xs:annotation>
+                    <xs:documentation>Amyloid beta quantification from CSF raw</xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                    <xs:restriction base="xs:float">
+                    </xs:restriction>
+                  </xs:simpleType>
+                </xs:element>
+                <xs:element name="tauprotein" minOccurs="0">
+                  <xs:annotation>
+                    <xs:documentation>Tau Protein quantification from CSF raw</xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                    <xs:restriction base="xs:float">
+                    </xs:restriction>
+                  </xs:simpleType>
+                </xs:element>
+                <xs:element name="phosphorylated" minOccurs="0">
+                  <xs:annotation>
+                    <xs:documentation>Phosphorylated tau protein quantification from CSF raw</xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                    <xs:restriction base="xs:float">
+                    </xs:restriction>
+                  </xs:simpleType>
+                </xs:element>
+              </xs:sequence>
+            </xs:complexType>
+          </xs:element>
+          <xs:element name="editor" minOccurs="0">
+            <xs:annotation>
+              <xs:documentation>Last user to edit the form</xs:documentation>
+            </xs:annotation>
+            <xs:simpleType>
+              <xs:restriction base="xs:string"/>
+            </xs:simpleType>
+          </xs:element>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>

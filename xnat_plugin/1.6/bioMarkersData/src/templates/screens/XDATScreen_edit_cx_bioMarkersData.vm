@@ -1,0 +1,92 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 3.2//EN">
+$page.setTitle("Wet Biomarkers")
+$page.setLinkColor($ui.alink)
+$page.setVlinkColor($ui.vlink)
+
+#set($months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"])
+#set($days = [ 1..31 ])
+#set($years = [ $!turbineUtils.getYear()..1990])
+#if ($data.message)
+<font color="red" size="3">$data.message</font>
+#end
+<p>
+<form ID="form1" name="form1" method="post" action="$link.setAction("ModifySubjectAssessorData")">
+<input type="hidden" name="project" value="$!{project}" >
+#if($vr)
+    <font color="red">Invalid parameters:<BR>$vr.toHTML()</font>
+<HR>
+#end
+<script src="$content.getURI("scripts/omUtils.js")"></script>
+<TABLE width="100%">
+    <TR>
+        <TD>
+            <table width="100%">
+                <TR>
+                    <TD align="left" valign="middle">
+                        <DIV class="edit_title">Wet Biomarkers:</DIV>
+                    </TD>
+                </TR>
+            </TABLE>
+        </TD>
+    </TR>
+    <TR>
+        <TD>
+            <TABLE width="100%">
+                <TR>
+                    <TD valign="top">
+                        <TABLE>
+                            <TR>
+                                <TD colspan='2'>
+                                    <HR>
+                                    #parse("/screens/xnat_edit_subjectAssessorData.vm")
+                                    <HR>
+                                </TD>
+                            </TR>
+                            <TR>
+                                <TD colspan="2">#parse("/screens/EditProjectSpecificFields.vm")</TD>
+                            </TR>
+                            <TR>
+                                <TD align="left" valign="top">
+                                    <!-- BEGIN cx:bioMarkersData -->
+                                    <TABLE>
+                                        <TR><TH align="left"><BR><font face="$ui.sansSerifFonts" size="2">Wet Biomarkers Details</font></TH></TR>
+                                        <TR>
+                                            <TD align="left" valign="top">
+                                                <TABLE>
+                                                    <TR><TD>Date of Collection:</TD><TD>
+                                                    #xdatDateBox("cx:bioMarkersData/date" $item $vr)</TD></TR>
+                                                    <TR><TD>Norm: Amyloid Beta Quantification:</TD><TD>
+                                                    #xdatStringBox("cx:bioMarkersData/norm/amyloidbeta" $item "" $vr)</TD></TR>
+                                                    <TR><TD>Norm: Tau Protein Quantification:</TD><TD>
+                                                    #xdatStringBox("cx:bioMarkersData/norm/tauprotein" $item "" $vr)</TD></TR>
+                                                    <TR><TD>Norm: Phosphorylated Tau Protein Quantification: </TD><TD>
+                                                    #xdatStringBox("cx:bioMarkersData/norm/phosphorylated" $item "" $vr)</TD></TR>
+                                                    <TR><TD>Raw: Amyloid Beta Quantification:</TD><TD>
+                                                    #xdatStringBox("cx:bioMarkersData/raw/amyloidbeta" $item "" $vr)</TD></TR>
+                                                    <TR><TD>Raw: Tau Protein Quantification:</TD><TD>
+                                                    #xdatStringBox("cx:bioMarkersData/raw/tauprotein" $item "" $vr)</TD></TR>
+                                                    <TR><TD>Raw: Phosphorylated Tau Protein Quantification: </TD><TD>
+                                                    #xdatStringBox("cx:bioMarkersData/raw/phosphorylated" $item "" $vr)</TD></TR>
+                                                    #xdatHiddenBox("cx:bioMarkersData/editor" "" $user.username)
+                                                </TABLE>
+                                            </TD>
+                                        </TR>
+                                    </TABLE>
+                                    <!-- END cx:bioMarkersData -->
+                                </TD>
+                             </TR>
+                        </TABLE>
+                    </TD>
+                </TR>
+            </TABLE>
+        </TD>
+    </TR>
+    <TR>
+        <TD>
+            #xdatEditProps($item $edit_screen)
+            <!--input type="button" ONCLICK="validateForm()"  name="eventSubmit_doInsert" value="Submit"/!-->
+            <TR><TD COLSPAN=2 ALIGN=left><button id="submit_qa">Submit</button></TD></TR>
+        </TD>
+    </TR>
+</TABLE>
+</form>

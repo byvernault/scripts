@@ -18,7 +18,7 @@ def parse_args():
                       help='Project ID on XNAT.')
     argp.add_argument('-d', '--directory', dest='directory', required=True,
                       help='Directory to store temp data.')
-    argp.add_argument('-s', '--session', dest='sessions', required=True,
+    argp.add_argument('-s', '--session', dest='sessions', default=None,
                       help='Sessions label on XNAT.')
 
     return argp.parse_args()
@@ -35,8 +35,9 @@ if __name__ == '__main__':
     try:
         xnat = XnatUtils.get_interface()
         li_scans = XnatUtils.list_project_scans(xnat, args.project)
-        li_scans = XnatUtils.filter_list_dicts_regex(li_scans, 'session_label',
-                                                     args.sessions.split(','))
+        if args.sessions:
+            li_scans = XnatUtils.filter_list_dicts_regex(
+                li_scans, 'session_label', args.sessions.split(','))
         li_scans = sorted(li_scans, key=lambda k: k['session_label'])
         for scan_d in li_scans:
             # If type is unknown or empty, run:
@@ -51,15 +52,16 @@ if __name__ == '__main__':
                     # Download the dicom and read the header:
                     scan_obj = XnatUtils.get_full_object(xnat, scan_d)
                     dicom_file = XnatUtils.download_file_from_obj(
-                                    tmp_dir, scan_obj.resource('DICOM'))
+                        tmp_dir, scan_obj.resource('DICOM'))
                     # for dicom_path in dicom_files:
                     print "   file: %s " % dicom_file
                     dcm = dicom.read_file(dicom_file)
                     # Get the protocol name
                     protocol = dcm.ProtocolName
-                    # Set it to the scan
-                    scan_obj.attrs.mset({'type': protocol,
-                                         'series_description': protocol})
+                    if protocol is not None:
+                        # Set it to the scan
+                        scan_obj.attrs.mset({'type': protocol,
+                                             'series_description': protocol})
 
     finally:
         xnat.disconnect()

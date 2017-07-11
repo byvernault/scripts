@@ -1,19 +1,21 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
     Setting the date of a session from the session label (after "_")
 """
 
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
-__author__ = 'byvernault'
-__email__ = 'b.yvernault@ucl.ac.uk'
-__purpose__ = 'Setting the date of a session from the session label (after "_")'
-__version__ = '1.0.0'
-__modifications__ = '11 February 2016 - Original write'
-
 import os
 import getpass
 from dax import XnatUtils
+
+
+__author__ = 'byvernault'
+__email__ = 'b.yvernault@ucl.ac.uk'
+__purpose__ = 'Setting the date of a session from the session label \
+(after "_")'
+__version__ = '1.0.0'
+__modifications__ = '11 February 2016 - Original write'
+
 
 def parse_args():
     """ Parser for arguments """
@@ -30,8 +32,8 @@ def parse_args():
 
 def edit_session_date(xnat, session_info):
     date = session_info['label'].split('_')[-1]
-    date = date[:4]+'-'+date[4:6]+'-'+date[6:]
-    print "%s - %s" % (session_info['label'], date)
+    date = '{}-{}-{}'.format(date[:4], date[4:6], date[6:])
+    print("%s - %s" % (session_info['label'], date))
     if session_info['date'] == date:
         print ' already set up.'
     else:

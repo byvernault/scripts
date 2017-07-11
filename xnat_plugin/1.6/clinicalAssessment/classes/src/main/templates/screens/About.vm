@@ -1,0 +1,26 @@
+$page.setTitle("About CMIC-XNAT")
+
+<style>
+	.cmicxnatAbout {
+	   width: 500px;
+	}
+	.cmicxnatAbout label {
+	   display: block;
+	   font-weight: bold;
+	}
+	.cmicxnatAbout p {
+	   display: block;
+	   padding-bottom: 10px;
+	}
+</style>
+
+<div class="cmicxnatAbout">
+
+<h2>CMIC-XNAT</h2>
+
+<p>
+CMIC-XNAT stores anonymised medical data for various research projects at CMIC.<br/>
+If you have questions, contact us at <a href="mailto:cmic-xnat@cs.ucl.ac.uk">cmic-xnat@cs.ucl.ac.uk</a>.
+</p>
+
+</div>
